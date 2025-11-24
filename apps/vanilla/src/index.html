@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset='utf-8'>
+	<meta name='viewport' content='width=device-width,initial-scale=1'>
+
+	<title>Perso Interactive SDK + Vanilla demo</title>
+
+	<link rel='icon' type='image/png' href='./favicon.png'>
+	<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@100;300;400;500;700;900&display=swap" rel="stylesheet">
+	<link rel='stylesheet' href='./global.css'>
+	<!-- SDK Loader -->
+	<script defer src="https://cdn.jsdelivr.net/gh/perso-ai/perso-interactive-sdk-web/core/1.0.0/perso-interactive-sdk.js"></script>
+	<script src='/index.js'></script>
+
+	<style>
+		.message-container {
+			display: flex;
+			flex-direction: column;
+		}
+		.message-container.user {
+			margin-left: auto;
+			align-items: flex-end;
+		}
+		.message-container.other {
+			margin-right: auto;
+			align-items: flex-start;
+		}
+		.message {
+			padding: 18px 20px;
+			border-radius: 20px;
+			max-width: 315px;
+			box-sizing: border-box;
+			margin: 0px 0px 10px 0px;
+		}
+		.user-message {
+			margin-left: auto;
+			background-color: white;
+			color: black;
+			font-size: 16px;
+			letter-spacing: -0.01em;
+			line-height: 150%;
+			overflow-wrap: break-word;
+		}
+		.other-message {
+			background-color: #343434;
+			color: white;
+			font-size: 16px;
+			letter-spacing: -0.01em;
+			line-height: 150%;
+			overflow-wrap: break-word;
+		}
+		.timestamp {
+			display: block;
+			margin: 8px 12px;
+			font-size: 12px;
+			color: black;
+			text-align: right;
+		}
+
+		p.title {
+			font-size: 36px;
+			font-weight: 800;
+			margin-top: 38px;
+			margin-bottom: 0px;
+			line-height: 49px;
+		}
+		p.config-title {
+			font-size: 24px;
+			font-weight: 700;
+			margin-top: 45px;
+			margin-bottom: 0px;
+			line-height: 28px;
+			padding-left: 15px;
+		}
+		p.configuration {
+			margin: 0px;
+			font-size: 20px;
+			font-weight: 700;
+			line-height: 23px;
+		}
+		video {
+			border: 1px;
+			border-color: black;
+			border-style: solid;
+		}
+		video.portrait {
+			display: flex;
+			width: 304px;
+			height: 540px;
+		}
+		video.landscape {
+			width: 960px;
+			height: 540px;
+		}
+		ul.chat-log {
+			display: flex;
+			flex-direction: column-reverse;
+			overflow-y: auto;
+			flex-grow: 1;
+			padding-inline: 10px;
+			width: 400px;
+			height: 540px;
+			max-width: 400px;
+			border: 1px;
+			border-color: black;
+			border-style: solid;
+			margin: 0px;
+			background-color: #999999;
+			list-style: none;
+		}
+		label.intro {
+			width: 400px;
+			max-width: 400px;
+			border: 1px;
+			padding: 10px;
+			background-color: #dcdcdc;
+		}
+		div.config {
+			display: block;
+			border: 1px;
+			border-color: black;
+			border-width: 1px;
+			border-style: solid;
+			max-width: 1377px;
+			width: 100%;
+			margin-top: 13px;
+			padding-inline-start: 37px;
+		}
+		button.session {
+			width: 380px;
+			height: 56px;
+			background-color: #644AFF;
+			font-weight: 700;
+			font-size: 16px;
+			color: white;
+			border-style: none;
+			border-radius: 4px;
+			margin-top: 24px;
+		}
+		button.session:disabled {
+			background-color: #acabb2;
+		}
+		.input-method-container {
+			display: flex;
+			align-items: center;
+			border: 1px;
+			border-color: #979797;
+			border-width: 1px;
+			border-style: solid;
+			margin-top: 18px;
+			width: 1034px;
+			height: 95px;
+		}
+		input.range {
+			width: 500px;
+		}
+		canvas.chatbot-position {
+			border: 1px;
+			border-color: #979797;
+			border-width: 1px;
+			border-style: solid;
+		}
+		.transparent {
+			background-color: transparent;
+		}
+		body {
+			padding: 0px;
+			margin: 0px;
+		}
+	</style>
+</head>
+<body>
+	<div style="display: block; padding-left: 47px;">
+		<p class="title">Perso Interactive SDK + Vanilla demo</p>
+		<div id="configContainer" style="display: block;">
+			<p class="config-title">Perso Interactive configuration</p>
+			<div class="config">
+				<p class="configuration" style="margin-top: 16px;">1. API Server</p>
+				<div style="display: flex; margin-top: 20px;">
+					<input id="apiServer" type="text" style="margin-left: 18px; width: 320px;" value="https://live-api.perso.ai"></input>
+				</div>
+
+				<p class="configuration" style="margin-top: 36px;">2. API Key</p>
+				<div style="display: flex; margin-top: 20px;">
+					<input id="apiKey" type="text" style="margin-left: 18px; width: 320px;"></input>
+					<button id="authorize" style="margin-left: 10px;" onclick="getConfig()">Authorize</button>
+				</div>
+
+				<p class="configuration" style="margin-top: 36px;">3. LLM</p>
+				<select id="llmOptions" style="margin-top: 20px; margin-left: 18px;">
+				</select>
+
+				<p class="configuration" style="margin-top: 36px;">4. TTS</p>
+				<select id="ttsOptions" style="margin-top: 20px; margin-left: 18px;">
+				</select>
+
+				<p class="configuration" style="margin-top: 36px;">5. STT</p>
+				<select id="sttOptions" style="margin-top: 20px; margin-left: 18px;">
+				</select>
+
+				<p class="configuration" style="margin-top: 36px;">6. AI human style</p>
+				<select id="chatbotStyle" style="margin-top: 20px; margin-left: 18px;">
+				</select>
+
+				<p class="configuration" style="margin-top: 36px;">7. Background</p>
+				<select id="backgroundImage" style="margin-top: 20px; margin-left: 18px;">
+				</select>
+
+				<p class="configuration" style="margin-top: 36px;">8. Prompt</p>
+				<select id="promptOptions" style="margin-top: 20px; margin-left: 18px;">
+				</select>
+
+				<p class="configuration" style="margin-top: 36px;">9. Intro message</p>
+				<label id="introMessage" class="intro" style="margin-top: 20px; margin-left: 18px;"></label>
+				<div style="display: flex; margin-top: 24px;">
+					<input id="useIntro" type="checkbox" style="margin-left: 18px;"></input>
+					<label for="useIntro">Use intro</label>
+				</div>
+
+				<p class="configuration" style="margin-top: 36px;">10. Document</p>
+				<select id="documentOptions" style="margin-top: 20px; margin-left: 18px;">
+				</select>
+
+				<p class="configuration" style="margin-top: 36px;">11. Remote MCP servers</p>
+				<div id="mcpServersContainer" style="display: block; margin-left: 18px; margin-top: 20px; margin-bottom: 43px;">
+				</div>
+
+				<p class="configuration" style="margin-top: 36px;">12. Client tools</p>
+				<div id="clientToolsContainer" style="display: block; margin-left: 18px; margin-top: 20px; margin-bottom: 43px;">
+				</div>
+
+				<p class="configuration" style="margin-top: 36px;">13. Screen orientation</p>
+				<div style="display: flex; margin-top: 24px; margin-bottom: 43px;">
+					<input id="portrait" type="radio" name="screenOrientation" value="portrait" style="margin-left: 18px;"></input>
+					<label for="portrait">PORTRAIT</label>
+					<input id="landscape" type="radio" name="screenOrientation" value="landscape" style="margin-left: 32px;"></input>
+					<label for="landscape">LANDSCAPE</label>
+				</div>
+
+				<p class="configuration" style="margin-top: 36px;">14. Chatbot position</p>
+				<div style="display: block; margin-top: 24px; margin-bottom: 43px;">
+					<canvas id="chatbotCanvas" class="chatbot-position" style="margin-left: 18px;"></canvas>
+					<div style="margin-left: 18px; margin-top: 24px;">
+						<p>CHATBOT LEFT : <span id="chatbotLeftValue"></span></p>
+						<input id="chatbotLeft" class="range" type="range">
+						<p>CHATBOT TOP : <span id="chatbotTopValue"></span></p>
+						<input id="chatbotTop" class="range" type="range">
+						<p>CHATBOT HEIGHT : <span id="chatbotHeightValue"></span></p>
+						<input id="chatbotHeight" class="range" type="range">
+						<p># The position and size of the chatbot may appear differently depending on the 'BACKGROUND' and 'AI HUMAN STYLE'.</p>
+					</div>
+				</div>
+
+				<p class="configuration" style="margin-top: 36px;">15. Etc</p>
+				<div style="display: flex; margin-top: 24px; margin-bottom: 43px;">
+					<input id="enableVoiceChat" type="checkbox" style="margin-left: 18px;" checked></input>
+					<label for="enableVoiceChat">Enable voice chat (If checked, micropone permission will be requested)</label>
+				</div>
+			</div>
+			<button id="sessionButton" class="session" onclick="onSessionClicked();">START</button>
+		</div>
+		<div id="chatbotContainer" style="display: flex; margin-top: 84px;">
+			<video id="video" class="landscape" autoplay playsinline></video>
+			<ul id="chatLog" class="chat-log">
+			</ul>
+		</div>
+		<div id="chatStateContainer" class="input-method-container">
+			<p style="width: 150px; margin-left: 14px; font-size: 24px; line-height: 28px;">Chat state : </p>
+			<p id="chatStateDescription" style="width: 697px; margin-left: 14px; font-size: 24px; line-height: 28px;">Available</p>
+			<button id="stopSpeech" style="width: 133px; height: 72px; font-size: 24px; line-height: 28px; margin-left: 12px;" onclick="onSendMessageClicked()">Stop Speech</button>
+		</div>
+		<div id="inputMethodContainer1" class="input-method-container">
+			<input id="message" type="text" style="width: 863px; height: 72px; font-size: 24px; padding-inline: 10px; margin-left: 12px;" onkeypress="onMessageKeyPress(event)" />
+			<button id="sendMessage" style="width: 133px; height: 72px; font-size: 24px; line-height: 28px; margin-left: 12px;" onclick="onSendMessageClicked()">Send</button>
+		</div>
+		<div id="inputMethodContainer2" class="input-method-container">
+			<p style="width: 150px; margin-left: 14px; font-size: 24px; line-height: 28px;">Voice chat</p>
+			<button id="voice" onclick="onVoiceChatClicked()" style="width: 128px; height: 52px; margin-left: 14px; font-size: 24px; line-height: 28px;">Start</button>
+		</div>
+		<div id="inputMethodContainer3" class="input-method-container">
+			<p style="width: 300px; margin-left: 14px; font-size: 24px; line-height: 28px;">Make the chatbot speak using text</p>
+			<input id="ttfMessage" type="text" style="width: 543px; height: 72px; font-size: 24px; padding-inline: 10px; margin-left: 18px;" />
+			<button id="sendTtfMessage" style="width: 133px; height: 72px; font-size: 24px; line-height: 28px; margin-left: 12px;" onclick="onTtstfMessageSubmit()">Send</button>
+		</div>
+		<br/>
+	</div>
+</body>
+</html>

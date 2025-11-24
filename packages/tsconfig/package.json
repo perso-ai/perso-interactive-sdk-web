@@ -1,0 +1,17 @@
+{
+  "name": "@perso-interactive-sdk-web/tsconfig",
+  "version": "1.0.0",
+  "private": true,
+  "files": [
+    "tsconfig.base.json"
+  ],
+  "devDependencies": {
+    "@perso-interactive-sdk-web/prettier-config": "workspace:*"
+  },
+  "exports": {
+    "./tsconfig.base.json": "./tsconfig.base.json"
+  },
+  "peerDependencies": {
+    "typescript": "^5.9.3"
+  }
+}
