@@ -93,7 +93,7 @@ Provides Perso Interactive Web SDK and demo apps.
 
 ## Using the Perso Interactive SDK Type in TypeScript
 
-The SDK ships a global type definition file at `perso-interactive-sdk.d.ts`, which exposes the `PersoInteractive` namespace (session helpers, `ChatState`, `ChatTool`, error classes, etc.). To use it in any TypeScript app:
+The SDK ships a global type definition file at [`perso-interactive-sdk.d.ts`](https://github.com/perso-ai/perso-interactive-sdk-web/blob/main/core/1.0.0/perso-interactive-sdk.d.ts), which exposes the `PersoInteractive` namespace (session helpers, `ChatState`, `ChatTool`, error classes, etc.). To use it in any TypeScript app:
 
 Create or update an ambient declaration (e.g., `src/app.d.ts`) with a triple-slash reference to the SDK d.ts.
 
