@@ -1,0 +1,9 @@
+{
+  "name": "@perso-interactive-sdk-web/prettier-config",
+  "version": "1.0.0",
+  "private": true,
+  "main": "index.cjs",
+  "dependencies": {
+    "prettier": "^3.3.3"
+  }
+}

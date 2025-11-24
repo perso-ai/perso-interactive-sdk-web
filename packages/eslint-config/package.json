@@ -1,0 +1,28 @@
+{
+	"name": "@perso-interactive-sdk-web/eslint-config",
+	"version": "1.0.0",
+	"private": true,
+	"type": "commonjs",
+	"main": "index.cjs",
+	"files": [
+		"index.cjs",
+		"bin"
+	],
+	"bin": {
+		"eslint": "./bin/eslint.cjs"
+	},
+	"devDependencies": {
+		"@perso-interactive-sdk-web/prettier-config": "workspace:*"
+	},
+	"dependencies": {
+		"@typescript-eslint/eslint-plugin": "^7.0.0",
+		"@typescript-eslint/parser": "^7.0.0",
+		"eslint": "^8.56.0",
+		"eslint-config-prettier": "^9.1.0",
+		"eslint-plugin-svelte": "^2.35.1",
+		"svelte": "^4.2.7"
+	},
+	"peerDependencies": {
+		"typescript": "^5.9.3"
+	}
+}

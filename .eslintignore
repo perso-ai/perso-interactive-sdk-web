@@ -1,0 +1,20 @@
+.DS_Store
+node_modules
+/apps/svelte/node_modules
+/apps/vanilla/node_modules
+/apps/typescript/node_modules
+/packages/perso-interactive-sdk/node_modules
+/packages/tsconfig/node_modules
+/packages/eslint-config/node_modules
+/packages/prettier-config/node_modules
+/build
+/.svelte-kit
+/package
+.env
+.env.*
+!.env.example
+
+# Ignore files for PNPM, NPM and YARN
+pnpm-lock.yaml
+package-lock.json
+yarn.lock
