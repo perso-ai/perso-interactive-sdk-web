@@ -2,6 +2,12 @@
 
 ## PersoInteractive
 
+### embeded code
+
+```html
+<script defer src="https://cdn.jsdelivr.net/gh/perso-ai/perso-interactive-sdk-web/core/1.0.0/perso-interactive-sdk.js"></script>
+```
+
 ### Get LLM list
 
 ```typescript
