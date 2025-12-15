@@ -1,6 +1,6 @@
 packages:
   - "apps/*"
   - "packages/*"
-  - "!packages/perso-interative-sdk"
+  - "!packages/perso-interactive-sdk"
   - "!CLAUDE.md"
   - "core/*"
