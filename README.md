@@ -6,7 +6,7 @@
 </div>
 
 <p align="center">
-  <img alt="SDK Version" src="https://img.shields.io/badge/SDK-1.0.0-5d3fd3?style=for-the-badge&labelColor=151515" />
+  <img alt="SDK Version" src="https://img.shields.io/badge/SDK-1.0.1-5d3fd3?style=for-the-badge&labelColor=151515" />
   <img alt="Node 20+" src="https://img.shields.io/badge/Node-20%2B-3cba92?style=for-the-badge&labelColor=151515" />
   <img alt="pnpm workspace" src="https://img.shields.io/badge/pnpm-workspace-f6921e?style=for-the-badge&labelColor=151515" />
   <img alt="Platforms" src="https://img.shields.io/badge/Platforms-Web%20%7C%20WebRTC-00b4d8?style=for-the-badge&labelColor=151515" />
@@ -27,12 +27,6 @@
 # Perso Interactive SDK
 
 Provides Perso Interactive Web SDK and demo apps.
-
-### embeded code
-
-```html
-<script defer src="https://cdn.jsdelivr.net/gh/perso-ai/perso-interactive-sdk-web/core/1.0.0/perso-interactive-sdk.js"></script>
-```
 
 ### **Demo App Spec**
 
@@ -93,7 +87,7 @@ Provides Perso Interactive Web SDK and demo apps.
 
 ## Using the Perso Interactive SDK Type in TypeScript
 
-The SDK ships a global type definition file at [`perso-interactive-sdk.d.ts`](https://github.com/perso-ai/perso-interactive-sdk-web/blob/main/core/1.0.0/perso-interactive-sdk.d.ts), which exposes the `PersoInteractive` namespace (session helpers, `ChatState`, `ChatTool`, error classes, etc.). To use it in any TypeScript app:
+The SDK ships a global type definition file at [`perso-interactive-sdk.d.ts`](https://github.com/perso-ai/perso-interactive-sdk-web/blob/main/core/1.0.1/perso-interactive-sdk.d.ts), which exposes the `PersoInteractive` namespace (session helpers, `ChatState`, `ChatTool`, error classes, etc.). To use it in any TypeScript app:
 
 Create or update an ambient declaration (e.g., `src/app.d.ts`) with a triple-slash reference to the SDK d.ts.
 
