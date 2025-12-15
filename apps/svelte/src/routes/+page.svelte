@@ -46,7 +46,7 @@
 		rel="stylesheet"
 	/>
 	<!-- SDK Loader -->
-	 <script defer src="https://cdn.jsdelivr.net/gh/perso-ai/perso-interactive-sdk-web/core/1.0.0/perso-interactive-sdk.js"></script>
+	 <script defer src="https://cdn.jsdelivr.net/gh/perso-ai/perso-interactive-sdk-web/core/1.0.1/perso-interactive-sdk.js"></script>
 </svelte:head>
 
 {#if !enableVoiceChat && !submitted}
