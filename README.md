@@ -216,7 +216,7 @@ const session = await PersoInteractive.createSession(
 ...
 ```
 
-> reference) [Tool calling example](https://github.com/est-perso-live/sdk-sample/blob/b74da4fcc2b9a7f981b2c28242ab36fda8d43fa0/apps/typescript/src/index.ts#L649)
+> reference) [Tool calling example](https://github.com/perso-ai/perso-interactive-sdk-web/blob/dabcd677b3e610b335dca16536ec25fba501455c/apps/svelte/src/lib/perso-interactive.ts#L14)
 
 # License
 
