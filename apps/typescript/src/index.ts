@@ -1,6 +1,20 @@
+import {
+  getAllSettings,
+  createSessionId,
+  createSession,
+  getSessionInfo,
+  ChatTool,
+  ChatState,
+  LLMError,
+  ApiError,
+  LLMStreamingResponseError,
+  type Chat,
+  type Session,
+} from "perso-interactive-sdk-web/client";
+
 type Orientation = "portrait" | "landscape";
 type SessionState = 0 | 1 | 2;
-type Settings = Awaited<ReturnType<typeof PersoInteractive.getAllSettings>>;
+type Settings = Awaited<ReturnType<typeof getAllSettings>>;
 
 const getElement = <T extends HTMLElement>(id: string): T => {
   const element = document.getElementById(id);
@@ -15,13 +29,13 @@ const getSelectIndex = (id: string): number =>
 
 let apiServer = "";
 let apiKey = "";
-let session: PersoInteractive.Session | null = null;
+let session: Session | null = null;
 let config: Settings | null = null;
 let screenOrientation: Orientation = "portrait";
 let chatbotLeft = 0;
 let chatbotTop = 0;
 let chatbotHeight = 100;
-let chatStates: Set<PersoInteractive.ChatState> = new Set();
+let chatStates: Set<ChatState> = new Set();
 let sessionState: SessionState = 0;
 let enableVoiceChat = true;
 let removeOnClose: (() => void) | null = null;
@@ -29,7 +43,7 @@ let unsubscribeChatStates: (() => void) | null = null;
 let unsubscribeChatLog: (() => void) | null = null;
 let removeErrorHandler: (() => void) | null = null;
 let removeSttResultCallback: (() => void) | null = null;
-let clientTools: PersoInteractive.ChatTool[] = [];
+let clientTools: ChatTool[] = [];
 
 const onSessionClicked = (): void => {
   if (sessionState === 0) {
@@ -84,7 +98,7 @@ const getConfig = async (): Promise<void> => {
   apiKey = getElement<HTMLInputElement>("apiKey").value;
 
   try {
-    config = await PersoInteractive.getAllSettings(apiServer, apiKey);
+    config = await getAllSettings(apiServer, apiKey);
   } catch (error) {
     alert(error);
     return;
@@ -282,7 +296,7 @@ const startSession = async (): Promise<void> => {
     "clientTools"
   ) as NodeListOf<HTMLInputElement>;
   const selectedClientTools = Array.from(clientToolsCheckBoxes).reduce<
-    PersoInteractive.ChatTool[]
+    ChatTool[]
   >((acc, element) => {
     if (element.checked) {
       acc.push(clientTools[Number(element.value)]);
@@ -294,7 +308,7 @@ const startSession = async (): Promise<void> => {
   const videoElement = getElement<HTMLVideoElement>("video");
 
   try {
-    const sessionId = await PersoInteractive.createSessionId(
+    const sessionId = await createSessionId(
       apiServer,
       apiKey,
       {
@@ -313,7 +327,7 @@ const startSession = async (): Promise<void> => {
       }
     );
 
-    const newSession = await PersoInteractive.createSession(
+    const newSession = await createSession(
       apiServer,
       sessionId,
       width,
@@ -341,21 +355,22 @@ const startSession = async (): Promise<void> => {
 
   refreshChatLog([]);
   removeErrorHandler = session.setErrorHandler((error: Error) => {
-    if (error instanceof PersoInteractive.LLMError) {
-      if (error.underlyingError instanceof PersoInteractive.ApiError) {
-        alert(error.underlyingError);
+    if (error instanceof LLMError) {
+      const llmError = error as LLMError;
+      if (llmError.underlyingError instanceof ApiError) {
+        alert(llmError.underlyingError);
       } else if (
-        error.underlyingError instanceof
-        PersoInteractive.LLMStreamingResponseError
+        llmError.underlyingError instanceof
+        LLMStreamingResponseError
       ) {
-        alert(error.underlyingError.description);
+        alert(llmError.underlyingError.description);
       }
     }
   });
-  unsubscribeChatLog = session.subscribeChatLog((chatLog) => {
+  unsubscribeChatLog = session.subscribeChatLog((chatLog: Array<Chat>) => {
     refreshChatLog(chatLog);
   });
-  unsubscribeChatStates = session.subscribeChatStates((states) => {
+  unsubscribeChatStates = session.subscribeChatStates((states: Set<ChatState>) => {
     applyChatStates(states);
   });
   // removeSttResultCallback = session.setSttResultCallback((text) => {
@@ -365,14 +380,14 @@ const startSession = async (): Promise<void> => {
   //         alert('Your voice was not recognized.');
   //     }
   // });
-  removeOnClose = session.onClose((manualClosed) => {
+  removeOnClose = session.onClose((manualClosed: boolean) => {
     if (!manualClosed) {
       setTimeout(() => {
-        PersoInteractive.getSessionInfo(apiServer, session!.getSessionId())
-          .then((response) => {
+        getSessionInfo(apiServer, session!.getSessionId())
+          .then((response: { termination_reason: string }) => {
             alert(response.termination_reason);
           })
-          .catch((error) => {
+          .catch((error: Error) => {
             console.error(error);
           });
       }, 500);
@@ -412,14 +427,14 @@ const stopSpeech = (): void => {
 const available = (): boolean => chatStates.size === 0;
 
 const processing = (): boolean =>
-  chatStates.has(PersoInteractive.ChatState.LLM) ||
-  chatStates.has(PersoInteractive.ChatState.ANALYZING) ||
-  chatStates.has(PersoInteractive.ChatState.SPEAKING);
+  chatStates.has(ChatState.LLM) ||
+  chatStates.has(ChatState.ANALYZING) ||
+  chatStates.has(ChatState.SPEAKING);
 
 const recording = (): boolean =>
-  chatStates.has(PersoInteractive.ChatState.RECORDING);
+  chatStates.has(ChatState.RECORDING);
 
-const refreshChatLog = (chatList: Array<PersoInteractive.Chat>): void => {
+const refreshChatLog = (chatList: Array<Chat>): void => {
   const chatLog = getElement<HTMLUListElement>("chatLog");
   chatLog.innerHTML = "";
   chatList.forEach((chat) => {
@@ -471,7 +486,7 @@ const applySessionState = (nextState: SessionState): void => {
 };
 
 const applyChatStates = (
-  nextChatStates: Set<PersoInteractive.ChatState> | null
+  nextChatStates: Set<ChatState> | null
 ): void => {
   chatStates = nextChatStates ?? new Set();
 
@@ -500,16 +515,16 @@ const applyChatStates = (
     sendTtfMessage.disabled = true;
 
     const chatStatesTextArr: string[] = [];
-    if (chatStates.has(PersoInteractive.ChatState.RECORDING)) {
+    if (chatStates.has(ChatState.RECORDING)) {
       chatStatesTextArr.push("Recording");
     }
-    if (chatStates.has(PersoInteractive.ChatState.LLM)) {
+    if (chatStates.has(ChatState.LLM)) {
       chatStatesTextArr.push("LLM");
     }
-    if (chatStates.has(PersoInteractive.ChatState.ANALYZING)) {
+    if (chatStates.has(ChatState.ANALYZING)) {
       chatStatesTextArr.push("Analyzing");
     }
-    if (chatStates.has(PersoInteractive.ChatState.SPEAKING)) {
+    if (chatStates.has(ChatState.SPEAKING)) {
       chatStatesTextArr.push("AI Speaking");
     }
     chatStateDesc.innerText = chatStatesTextArr.join(" / ");
@@ -676,8 +691,8 @@ window.onload = async (): Promise<void> => {
   redrawChatbotCanvas();
 };
 
-const loadChatTools = (): PersoInteractive.ChatTool[] => {
-  const chatTool1 = new PersoInteractive.ChatTool(
+const loadChatTools = (): ChatTool[] => {
+  const chatTool1 = new ChatTool(
     "get_square_number",
     "Returns the square of the given number",
     {
@@ -691,13 +706,13 @@ const loadChatTools = (): PersoInteractive.ChatTool[] => {
       },
       required: ["number"],
     },
-    (arg) => ({
+    (arg: { number: number }) => ({
       result: arg.number * arg.number,
     }),
     false
   );
 
-  const chatTool2 = new PersoInteractive.ChatTool(
+  const chatTool2 = new ChatTool(
     "get_current_weather",
     "Retrieves the current weather for a given location",
     {
@@ -717,7 +732,7 @@ const loadChatTools = (): PersoInteractive.ChatTool[] => {
       },
       required: ["location", "units"],
     },
-    (arg) => {
+    (arg: { location: string; units: string }) => {
       const location = arg.location;
       const units = arg.units;
       console.log(`get_current_weather called for ${location} in ${units}`);
@@ -731,7 +746,7 @@ const loadChatTools = (): PersoInteractive.ChatTool[] => {
     false
   );
 
-  const chatTool3 = new PersoInteractive.ChatTool(
+  const chatTool3 = new ChatTool(
     "show_settings",
     "Use ONLY for direct **COMMANDS** to open settings/admin screen (e.g., 'open settings', 'show admin'). MUST NOT be used for explanations or responses. Return values are machine-only JSON.",
     {
@@ -745,7 +760,7 @@ const loadChatTools = (): PersoInteractive.ChatTool[] => {
     true
   );
 
-  const chatTool4 = new PersoInteractive.ChatTool(
+  const chatTool4 = new ChatTool(
     "show_map",
     "Use ONLY for direct **COMMANDS** to open map (e.g., 'open map', 'show map'). MUST NOT be used for explanations or responses. Return values are machine-only JSON.",
     {
@@ -761,3 +776,16 @@ const loadChatTools = (): PersoInteractive.ChatTool[] => {
 
   return [chatTool1, chatTool2, chatTool3, chatTool4];
 };
+
+// Expose functions to global scope for HTML onclick handlers
+(window as unknown as Record<string, unknown>).getConfig = getConfig;
+(window as unknown as Record<string, unknown>).onSessionClicked =
+  onSessionClicked;
+(window as unknown as Record<string, unknown>).onVoiceChatClicked =
+  onVoiceChatClicked;
+(window as unknown as Record<string, unknown>).onSendMessageClicked =
+  onSendMessageClicked;
+(window as unknown as Record<string, unknown>).onMessageKeyPress =
+  onMessageKeyPress;
+(window as unknown as Record<string, unknown>).onTtstfMessageSubmit =
+  onTtstfMessageSubmit;

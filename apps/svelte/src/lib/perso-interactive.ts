@@ -1,3 +1,5 @@
+import { ChatTool } from 'perso-interactive-sdk-web/client';
+
 export class PersoInteractiveConfig {
 	constructor(
 		public persoInteractiveApiServerUrl: string,
@@ -6,14 +8,14 @@ export class PersoInteractiveConfig {
 		public chatbotHeight: number,
 		public enableVoiceChat: boolean,
 		public introMessage: string,
-		public clientTools: Array<PersoInteractive.ChatTool>
+		public clientTools: Array<ChatTool>
 	) {}
 }
 
 // Loading the default ClientTools.
-export function getDefaultClientTools(): Array<PersoInteractive.ChatTool> {
+export function getDefaultClientTools(): Array<ChatTool> {
 	// This ClientTool tells you the square of the queried number.
-	const chatTool1 = new PersoInteractive.ChatTool(
+	const chatTool1 = new ChatTool(
 		'get_square_number',
 		'Returns the square of the given number',
 		{
@@ -27,14 +29,14 @@ export function getDefaultClientTools(): Array<PersoInteractive.ChatTool> {
 			},
 			required: ['number']
 		},
-		(arg) => {
+		(arg: { number: number }) => {
 			return { result: arg.number * arg.number };
 		},
 		false
 	);
 	// This ClientTool provides the current weather of the queried city.
 	// This is a sample feature that always provides the same information regardless of the city queried.
-	const chatTool2 = new PersoInteractive.ChatTool(
+	const chatTool2 = new ChatTool(
 		'get_current_weather',
 		'Retrieves the current weather for a given location',
 		{
@@ -54,7 +56,7 @@ export function getDefaultClientTools(): Array<PersoInteractive.ChatTool> {
 			},
 			required: ['location', 'units']
 		},
-		async (arg) => {
+		async (arg: { location: string; units: string }) => {
 			const location: string = arg.location;
 			// convert string to Units, 'celsius' -> Units.CELSIUS
 			const units = Object.values(Units).find((v) => v === arg.units);
@@ -78,14 +80,14 @@ export function getDefaultClientTools(): Array<PersoInteractive.ChatTool> {
 	);
 	// This ClientTool opens the admin dashboard.
 	// This is a sample feature that logs a message when executed.
-	const chatTool3 = new PersoInteractive.ChatTool(
+	const chatTool3 = new ChatTool(
 		'show_settings',
 		"Use ONLY for direct **COMMANDS** to open settings/admin screen (e.g., 'open settings', 'show admin'). MUST NOT be used for explanations or responses. Return values are machine-only JSON.",
 		{
 			type: 'object',
 			properties: {}
 		},
-		(arg) => {
+		(_arg: object) => {
 			console.log('show admin page');
 			return { action: 'show_settings', success: true };
 		},
@@ -93,14 +95,14 @@ export function getDefaultClientTools(): Array<PersoInteractive.ChatTool> {
 	);
 	// This ClientTool opens a map.
 	// This is a sample that triggers an error when executed.
-	const chatTool4 = new PersoInteractive.ChatTool(
+	const chatTool4 = new ChatTool(
 		'show_map',
 		"Use ONLY for direct **COMMANDS** to open map (e.g., 'open map', 'show map'). MUST NOT be used for explanations or responses. Return values are machine-only JSON.",
 		{
 			type: 'object',
 			properties: {}
 		},
-		(arg) => {
+		(_arg: object) => {
 			console.log('show map');
 			throw new Error('client tool4 error test');
 		},

@@ -1,4 +1,5 @@
 import { persoInteractiveApiServerUrl, persoInteractiveApiKey } from '$lib/constant';
+import { PersoUtilServer } from 'perso-interactive-sdk-web/server';
 
 // TODO Added to bypass the in-house TLS MITM issue; remove for production builds.
 process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
@@ -37,9 +38,7 @@ export const config = {
 	document: allConfig.documents.length > 0 ? allConfig.documents[0].document_id : null,
 	backgroundImage:
 		allConfig.backgroundImages.length > 0 ? allConfig.backgroundImages[0].backgroundimage_id : null,
-	mcpServers: (allConfig.mcpServers as Array<any>).map((value) => {
-		return value.mcpserver_id;
-	}),
+	mcpServers: [],
 	introMessage: allConfig.prompts[0].intro_message,
 	padding_left: 0.0,
 	padding_top: 0.15,
@@ -47,17 +46,29 @@ export const config = {
 };
 
 async function getAllConfig() {
-	const llms = await getLLMs(persoInteractiveApiServerUrl, persoInteractiveApiKey);
-	const ttss = await getTTSs(persoInteractiveApiServerUrl, persoInteractiveApiKey);
-	const stts = await getSTTs(persoInteractiveApiServerUrl, persoInteractiveApiKey);
-	const modelStyles = await getModelStyles(persoInteractiveApiServerUrl, persoInteractiveApiKey);
-	const backgroundImages = await getBackgroundImages(
+	const llms = await PersoUtilServer.getLLMs(persoInteractiveApiServerUrl, persoInteractiveApiKey);
+	const ttss = await PersoUtilServer.getTTSs(persoInteractiveApiServerUrl, persoInteractiveApiKey);
+	const stts = await PersoUtilServer.getSTTs(persoInteractiveApiServerUrl, persoInteractiveApiKey);
+	const modelStyles = await PersoUtilServer.getModelStyles(
 		persoInteractiveApiServerUrl,
 		persoInteractiveApiKey
 	);
-	const mcpServers = await getMcpServers(persoInteractiveApiServerUrl, persoInteractiveApiKey);
-	const prompts = await getPrompts(persoInteractiveApiServerUrl, persoInteractiveApiKey);
-	const documents = await getDocuments(persoInteractiveApiServerUrl, persoInteractiveApiKey);
+	const backgroundImages = await PersoUtilServer.getBackgroundImages(
+		persoInteractiveApiServerUrl,
+		persoInteractiveApiKey
+	);
+	const mcpServers = await PersoUtilServer.getMcpServers(
+		persoInteractiveApiServerUrl,
+		persoInteractiveApiKey
+	);
+	const prompts = await PersoUtilServer.getPrompts(
+		persoInteractiveApiServerUrl,
+		persoInteractiveApiKey
+	);
+	const documents = await PersoUtilServer.getDocuments(
+		persoInteractiveApiServerUrl,
+		persoInteractiveApiKey
+	);
 
 	return {
 		llms,
@@ -69,195 +80,4 @@ async function getAllConfig() {
 		documents,
 		backgroundImages
 	};
-}
-
-/**
- * @param apiServer Perso Interactive API Server
- * @param apiKey Perso Interactive API Key
- * @returns JSON
- * [
- *   {
- *     "name": string
- *   }
- * ]
- */
-async function getLLMs(apiServer: string, apiKey: string) {
-	const response = await fetch(`${apiServer}/api/v1/settings/llm_type/`, {
-		headers: {
-			'PersoLive-APIKey': apiKey
-		},
-		method: 'GET'
-	});
-
-	return await response.json();
-}
-
-/**
- * @param apiServer Perso Interactive API Server
- * @param apiKey Perso Interactive API Key
- * @returns JSON
- * [
- *   {
- *     "name": string,
- *     "service": string,
- *     "speaker": string
- *   }
- * ]
- */
-async function getTTSs(apiServer: string, apiKey: string) {
-	const response = await fetch(`${apiServer}/api/v1/settings/tts_type/`, {
-		headers: {
-			'PersoLive-APIKey': apiKey
-		},
-		method: 'GET'
-	});
-
-	return await response.json();
-}
-
-/**
- * @param apiServer Perso Interactive API Server
- * @param apiKey Perso Interactive API Key
- * @returns JSON
- * [
- *   {
- *     "name": string,
- *     "service": string,
- *     "options": string
- *   }
- * ]
- */
-async function getSTTs(apiServer: string, apiKey: string) {
-	const response = await fetch(`${apiServer}/api/v1/settings/stt_type/`, {
-		headers: {
-			'PersoLive-APIKey': apiKey
-		},
-		method: 'GET'
-	});
-
-	return await response.json();
-}
-
-/**
- * @param apiServer Perso Interactive API Server
- * @param apiKey Perso Interactive API Key
- * @returns JSON
- * [
- *   {
- *     "name": string,
- *     "model": string,
- *     "style": string
- *   }
- * ]
- */
-async function getModelStyles(apiServer: string, apiKey: string) {
-	const response = await fetch(`${apiServer}/api/v1/settings/modelstyle/?platform_type=webrtc`, {
-		headers: {
-			'PersoLive-APIKey': apiKey
-		},
-		method: 'GET'
-	});
-
-	return await response.json();
-}
-
-/**
- * @param apiServer Perso Interactive API Server
- * @param apiKey Perso Interactive API Key
- * @returns JSON
- * [
- *   {
- *     "backgroundimage_id": string,
- *     "title": string,
- *     "image": string
- *     "created_at": string // ex) "2024-05-02T09:05:55.395Z"
- *   }
- * ]
- */
-async function getBackgroundImages(apiServer: string, apiKey: string) {
-	const response = await fetch(`${apiServer}/api/v1/background_image/`, {
-		headers: {
-			'PersoLive-APIKey': apiKey
-		},
-		method: 'GET'
-	});
-
-	return await response.json();
-}
-
-/**
- * @param apiServer Perso Interactive API Server
- * @param apiKey Perso Interactive API Key
- * @returns JSON
- * [
- *   {
- *     "mcpserver_id": string,
- *     "name": string,
- *     "url": string
- *     "description": string"
- *   }
- * ]
- */
-async function getMcpServers(apiServer: string, apiKey: string) {
-	const response = await fetch(`${apiServer}/api/v1/settings/mcp_type/`, {
-		headers: {
-			'PersoLive-APIKey': apiKey
-		},
-		method: 'GET'
-	});
-
-	return await response.json();
-}
-
-/**
- * @param apiServer Perso Interactive API Server
- * @param apiKey Perso Interactive API Key
- * @returns JSON
- * [
- *   {
- *     "name": string,
- *     "description": string,
- *     "prompt_id": string,
- *     "system_prompt": string,
- *     "require_document": boolean,
- *     "intro_message": string
- *   }
- * ]
- */
-async function getPrompts(apiServer: string, apiKey: string) {
-	const response = await fetch(`${apiServer}/api/v1/prompt/`, {
-		headers: {
-			'PersoLive-APIKey': apiKey
-		},
-		method: 'GET'
-	});
-
-	return await response.json();
-}
-
-/**
- * @param apiServer Perso Interactive API Server
- * @param apiKey Perso Interactive API Key
- * @returns JSON
- * [
- *   {
- *     "document_id": string,
- *     "title": string,
- *     "description": string,
- *     "search_count": number,,
- *     "processed": boolean,
- *     "created_at": string, // ex) "2024-05-02T09:05:55.395Z",
- *     "updated_at": string // ex) "2024-05-02T09:05:55.395Z"
- *   }
- * ]
- */
-async function getDocuments(apiServer: string, apiKey: string) {
-	const response = await fetch(`${apiServer}/api/v1/document/`, {
-		headers: {
-			'PersoLive-APIKey': apiKey
-		},
-		method: 'GET'
-	});
-
-	return await response.json();
 }

@@ -16,7 +16,7 @@ SvelteKit implementation of the Perso Interactive SDK demo. The app renders a fu
 - `src/lib/perso-interactive.ts` – shared PersoInteractive config utilities and sample client tools
 - `src/lib/components/*.svelte` – UI widgets (video, chat log, inputs, etc.)
 - `static/global.css`, `static/favicon.png` – styling assets referenced by the root page
-- `@perso-interactive-sdk-web/perso-interactive-sdk` – internal package that exposes the global SDK types
+- `perso-interactive-sdk-web` – SDK package that exposes the client and server modules
 
 ## Development workflow
 

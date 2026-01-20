@@ -7,20 +7,30 @@
 	import VoiceChat from './VoiceChat.svelte';
 	import TTSTFInput from './TTSTFInput.svelte';
 	import { type PersoInteractiveConfig } from '$lib/perso-interactive';
+	import {
+		createSession,
+		getSessionInfo,
+		ChatState,
+		LLMError,
+		ApiError,
+		LLMStreamingResponseError,
+		type Session,
+		type Chat
+	} from 'perso-interactive-sdk-web/client';
 
 	export let persoInteractiveConfig: PersoInteractiveConfig;
 
-	let session: PersoInteractive.Session;
+	let session: Session;
 	let unsubscribes: (() => void)[] = [];
 
-	let chatStates: Set<PersoInteractive.ChatState> = new Set(); // 0: available 1: recording 2: analyzing 3: AI speaking
+	let chatStates: Set<ChatState> = new Set(); // 0: available 1: recording 2: analyzing 3: AI speaking
 	let sessionState: number = 0; // 0: Initial state(or closed) 1: starting 2: started
 	let sessionButton: HTMLButtonElement;
 
 	let videoWidth: number;
 	let videoHeight: number;
 
-	let chatLog: Array<PersoInteractive.Chat> = [];
+	let chatLog: Array<Chat> = [];
 
 	let available: boolean = false;
 	let processing: boolean = false;
@@ -34,11 +44,11 @@
 	// being converted into video (ANALYZING),
 	// or the AI human is speaking (SPEAKING).
 	$: processing =
-		chatStates.has(PersoInteractive.ChatState.LLM) ||
-		chatStates.has(PersoInteractive.ChatState.ANALYZING) ||
-		chatStates.has(PersoInteractive.ChatState.SPEAKING);
+		chatStates.has(ChatState.LLM) ||
+		chatStates.has(ChatState.ANALYZING) ||
+		chatStates.has(ChatState.SPEAKING);
 
-	$: recording = chatStates.has(PersoInteractive.ChatState.RECORDING);
+	$: recording = chatStates.has(ChatState.RECORDING);
 
 	$: resetChatStateDescriptionText(chatStates);
 
@@ -49,7 +59,7 @@
 		sessionState = 0;
 
 		try {
-			session = await PersoInteractive.createSession(
+			session = await createSession(
 				persoInteractiveConfig.persoInteractiveApiServerUrl,
 				persoInteractiveConfig.sessionId,
 				persoInteractiveConfig.chatbotWidth,
@@ -65,10 +75,10 @@
 			return;
 		}
 
-		const unsubscribeChatLog = session.subscribeChatLog((log: Array<PersoInteractive.Chat>) => {
+		const unsubscribeChatLog = session.subscribeChatLog((log: Array<Chat>) => {
 			chatLog = log;
 		});
-		const unsubscribeChatStates = session.subscribeChatStates((states) => {
+		const unsubscribeChatStates = session.subscribeChatStates((states: Set<ChatState>) => {
 			chatStates = states;
 		});
 		// this.removeSttResultCallback = session.setSttResultCallback((sttResult) => {
@@ -78,19 +88,20 @@
 		//         alert('Your voice was not recognized.');
 		//     }
 		// });
-		const removeErrorHandler = session.setErrorHandler((error) => {
-			if (error instanceof PersoInteractive.LLMError) {
-				if (error.underlyingError instanceof PersoInteractive.ApiError) {
-					alert(error.underlyingError);
-				} else if (error.underlyingError instanceof PersoInteractive.LLMStreamingResponseError) {
-					alert(error.underlyingError.description);
+		const removeErrorHandler = session.setErrorHandler((error: Error) => {
+			if (error instanceof LLMError) {
+				const llmError = error as LLMError;
+				if (llmError.underlyingError instanceof ApiError) {
+					alert(llmError.underlyingError);
+				} else if (llmError.underlyingError instanceof LLMStreamingResponseError) {
+					alert(llmError.underlyingError.description);
 				}
 			}
 		});
-		const removeOnClose = session.onClose((manualClosed) => {
+		const removeOnClose = session.onClose((manualClosed: boolean) => {
 			if (!manualClosed) {
 				setTimeout(() => {
-					PersoInteractive.getSessionInfo(
+					getSessionInfo(
 						persoInteractiveConfig.persoInteractiveApiServerUrl,
 						persoInteractiveConfig.sessionId
 					).then((response: any) => {
@@ -155,22 +166,22 @@
 		session.setSrc(video);
 	}
 
-	async function resetChatStateDescriptionText(chatStates: Set<PersoInteractive.ChatState>) {
+	async function resetChatStateDescriptionText(chatStates: Set<ChatState>) {
 		const chatStatesTextArr = [];
 		if (available) {
 			chatStateDescriptionText = 'Available';
 			return;
 		}
-		if (chatStates.has(PersoInteractive.ChatState.RECORDING)) {
+		if (chatStates.has(ChatState.RECORDING)) {
 			chatStatesTextArr.push('Recording');
 		}
-		if (chatStates.has(PersoInteractive.ChatState.LLM)) {
+		if (chatStates.has(ChatState.LLM)) {
 			chatStatesTextArr.push('LLM');
 		}
-		if (chatStates.has(PersoInteractive.ChatState.ANALYZING)) {
+		if (chatStates.has(ChatState.ANALYZING)) {
 			chatStatesTextArr.push('Analyzing');
 		}
-		if (chatStates.has(PersoInteractive.ChatState.SPEAKING)) {
+		if (chatStates.has(ChatState.SPEAKING)) {
 			chatStatesTextArr.push('AI Speaking');
 		}
 
