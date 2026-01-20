@@ -12,6 +12,9 @@
     "lint": "tsc --noEmit",
     "format": "prettier --write ."
   },
+  "dependencies": {
+    "perso-interactive-sdk": "workspace:*"
+  },
   "devDependencies": {
     "@perso-interactive-sdk-web/prettier-config": "workspace:*",
     "@perso-interactive-sdk-web/tsconfig": "workspace:*",

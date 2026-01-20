@@ -1,3 +1,5 @@
+import * as PersoInteractive from 'perso-interactive-sdk/client';
+
 var apiServer = null;
 var apiKey = null;
 var session = null;
@@ -18,11 +20,11 @@ var removeSttResultCallback = null;
 var clientTools = null;
 
 function onSessionClicked() {
-	if (this.sessionState === 0) {
+	if (sessionState === 0) {
 		startSession();
 
 		applySessionState(1);
-	} else if (this.sessionState === 2) {
+	} else if (sessionState === 2) {
 		stopSession();
 	}
 }
@@ -41,7 +43,7 @@ function onVoiceChatClicked() {
 }
 
 function onSendMessageClicked() {
-	if (this.chatStates.size === 0) {
+	if (chatStates.size === 0) {
 		sendMessage();
 	} else {
 		stopSpeech();
@@ -177,24 +179,24 @@ async function getConfig() {
 }
 
 async function startSession() {
-	if (this.removeErrorHandler != null) {
-		this.removeErrorHandler();
+	if (removeErrorHandler != null) {
+		removeErrorHandler();
 	}
-	if (this.removeOnClose != null) {
-		this.removeOnClose();
+	if (removeOnClose != null) {
+		removeOnClose();
 	}
-	if (this.unsubscribeChatStates != null) {
-		this.unsubscribeChatStates();
+	if (unsubscribeChatStates != null) {
+		unsubscribeChatStates();
 	}
-	if (this.unsubscribeChatLog != null) {
-		this.unsubscribeChatLog();
+	if (unsubscribeChatLog != null) {
+		unsubscribeChatLog();
 	}
-	if (this.removeSttResultCallback != null) {
-		this.removeSttResultCallback();
+	if (removeSttResultCallback != null) {
+		removeSttResultCallback();
 	}
 
 	let width, height;
-	if (this.screenOrientation === 'portrait') {
+	if (screenOrientation === 'portrait') {
 		width = 1080;
 		height = 1920;
 	} else {
@@ -255,24 +257,20 @@ async function startSession() {
 	const videoElement = document.getElementById('video');
 
 	try {
-		const sessionId = await PersoInteractive.createSessionId(
-			apiServer,
-			apiKey,
-			{
-				using_stf_webrtc: true,
-				model_style: modelStyleKey,
-				prompt: promptKey,
-				document: documentKey,
-				background_image: backgroundImageKey,
-				mcp_servers: mcpServersKey,
-				padding_left: chatbotLeft / 100,
-				padding_top: chatbotTop / 100,
-				padding_height: chatbotHeight / 100,
-				llm_type: llmTypeKey,
-				tts_type: ttsTypeKey,
-				stt_type: sttTypeKey,
-			}
-		);
+		const sessionId = await PersoInteractive.createSessionId(apiServer, apiKey, {
+			using_stf_webrtc: true,
+			model_style: modelStyleKey,
+			prompt: promptKey,
+			document: documentKey,
+			background_image: backgroundImageKey,
+			mcp_servers: mcpServersKey,
+			padding_left: chatbotLeft / 100,
+			padding_top: chatbotTop / 100,
+			padding_height: chatbotHeight / 100,
+			llm_type: llmTypeKey,
+			tts_type: ttsTypeKey,
+			stt_type: sttTypeKey
+		});
 		session = await PersoInteractive.createSession(
 			apiServer,
 			sessionId,
@@ -295,7 +293,7 @@ async function startSession() {
 	}
 
 	refreshChatLog([]);
-	this.removeErrorHandler = session.setErrorHandler((error) => {
+	removeErrorHandler = session.setErrorHandler((error) => {
 		if (error instanceof PersoInteractive.LLMError) {
 			if (error.underlyingError instanceof PersoInteractive.ApiError) {
 				alert(error.underlyingError);
@@ -304,20 +302,20 @@ async function startSession() {
 			}
 		}
 	});
-	this.unsubscribeChatLog = session.subscribeChatLog((chatLog) => {
+	unsubscribeChatLog = session.subscribeChatLog((chatLog) => {
 		refreshChatLog(chatLog);
 	});
-	this.unsubscribeChatStates = session.subscribeChatStates((chatStates) => {
+	unsubscribeChatStates = session.subscribeChatStates((chatStates) => {
 		applyChatStates(chatStates);
 	});
-	// this.removeSttResultCallback = session.setSttResultCallback((text) => {
+	// removeSttResultCallback = session.setSttResultCallback((text) => {
 	//     if (text.length > 0) {
 	//         session.processChat(text);
 	//     } else {
 	//         alert('Your voice was not recognized.');
 	//     }
 	// });
-	this.removeOnClose = session.onClose((manualClosed) => {
+	removeOnClose = session.onClose((manualClosed) => {
 		if (!manualClosed) {
 			setTimeout(() => {
 				PersoInteractive.getSessionInfo(apiServer, session.getSessionId()).then((response) => {
@@ -357,7 +355,7 @@ function stopSpeech() {
 
 function available() {
 	// If 'chatStates' has no ChatState, it is in the Available state
-	return this.chatStates.size === 0;
+	return chatStates.size === 0;
 }
 
 function processing() {
@@ -365,14 +363,14 @@ function processing() {
 	// being converted into video (ANALYZING),
 	// or the AI human is speaking (SPEAKING).
 	return (
-		this.chatStates.has(PersoInteractive.ChatState.LLM) ||
-		this.chatStates.has(PersoInteractive.ChatState.ANALYZING) ||
-		this.chatStates.has(PersoInteractive.ChatState.SPEAKING)
+		chatStates.has(PersoInteractive.ChatState.LLM) ||
+		chatStates.has(PersoInteractive.ChatState.ANALYZING) ||
+		chatStates.has(PersoInteractive.ChatState.SPEAKING)
 	);
 }
 
 function recording() {
-	return this.chatStates.has(PersoInteractive.ChatState.RECORDING);
+	return chatStates.has(PersoInteractive.ChatState.RECORDING);
 }
 
 function refreshChatLog(chatList) {
@@ -405,11 +403,11 @@ function refreshChatLog(chatList) {
 	});
 }
 
-function applySessionState(sessionState) {
-	this.sessionState = sessionState;
+function applySessionState(nextState) {
+	sessionState = nextState;
 
 	var sessionButton = document.getElementById('sessionButton');
-	switch (sessionState) {
+	switch (nextState) {
 		case 0: {
 			sessionButton.disabled = false;
 			sessionButton.innerText = 'START';
@@ -427,8 +425,8 @@ function applySessionState(sessionState) {
 	}
 }
 
-function applyChatStates(chatStates) {
-	this.chatStates = chatStates !== null ? chatStates : new Set();
+function applyChatStates(nextChatStates) {
+	chatStates = nextChatStates !== null ? nextChatStates : new Set();
 
 	const chatStateDesc = document.getElementById('chatStateDescription');
 	const stopSpeechButton = document.getElementById('stopSpeech');
@@ -453,16 +451,16 @@ function applyChatStates(chatStates) {
 		sendTtfMessage.disabled = true;
 
 		const chatStatesTextArr = [];
-		if (this.chatStates.has(PersoInteractive.ChatState.RECORDING)) {
+		if (chatStates.has(PersoInteractive.ChatState.RECORDING)) {
 			chatStatesTextArr.push('Recording');
 		}
-		if (this.chatStates.has(PersoInteractive.ChatState.LLM)) {
+		if (chatStates.has(PersoInteractive.ChatState.LLM)) {
 			chatStatesTextArr.push('LLM');
 		}
-		if (this.chatStates.has(PersoInteractive.ChatState.ANALYZING)) {
+		if (chatStates.has(PersoInteractive.ChatState.ANALYZING)) {
 			chatStatesTextArr.push('Analyzing');
 		}
-		if (this.chatStates.has(PersoInteractive.ChatState.SPEAKING)) {
+		if (chatStates.has(PersoInteractive.ChatState.SPEAKING)) {
 			chatStatesTextArr.push('AI Speaking');
 		}
 		chatStateDesc.innerText = chatStatesTextArr.join(' / ');
@@ -509,16 +507,11 @@ async function loadImage() {
 function redrawChatbotCanvas() {
 	const chatbotCanvas = document.getElementById('chatbotCanvas');
 
-	let width, height;
-	if (screenOrientation === 'portrait') {
-		width = 304;
-		height = 540;
-	} else {
-		width = 960;
-		height = 540;
-	}
-	chatbotCanvas.clientWidth = width;
-	chatbotCanvas.clientHeight = height;
+	const width = screenOrientation === 'portrait' ? 304 : 960;
+	const height = 540;
+
+	chatbotCanvas.style.width = `${width}px`;
+	chatbotCanvas.style.height = `${height}px`;
 	chatbotCanvas.width = width;
 	chatbotCanvas.height = height;
 
@@ -541,11 +534,11 @@ function redrawChatbotCanvas() {
 }
 
 window.onload = async function () {
-	const enableVoiceChat = document.getElementById('enableVoiceChat');
-	enableVoiceChat.addEventListener('change', (e) => {
+	const enableVoiceChatCheckbox = document.getElementById('enableVoiceChat');
+	enableVoiceChatCheckbox.addEventListener('change', (e) => {
 		const voiceChatContainer = document.getElementById('inputMethodContainer2');
-		this.enableVoiceChat = e.target.checked;
-		if (this.enableVoiceChat) {
+		enableVoiceChat = e.target.checked;
+		if (enableVoiceChat) {
 			voiceChatContainer.style.display = 'flex';
 		} else {
 			voiceChatContainer.style.display = 'none';
@@ -557,7 +550,7 @@ window.onload = async function () {
 		let node = screenOrientations[i];
 		node.addEventListener('change', (e) => {
 			if (e.target.checked) {
-				this.screenOrientation = e.target.value;
+				screenOrientation = e.target.value;
 				redrawChatbotCanvas();
 			}
 		});
@@ -587,18 +580,18 @@ window.onload = async function () {
 		return `${value}(${value / 100})`;
 	}
 
-	this.chatbotLeft = 0;
-	this.chatbotTop = 0;
-	this.chatbotHeight = 100;
+	chatbotLeft = 0;
+	chatbotTop = 0;
+	chatbotHeight = 100;
 
 	const chatbotLeftElement = document.getElementById('chatbotLeft');
 	const chatbotLeftValueElement = document.getElementById('chatbotLeftValue');
 	chatbotLeftElement.min = -100;
 	chatbotLeftElement.max = 100;
-	chatbotLeftElement.value = this.chatbotLeft;
+	chatbotLeftElement.value = chatbotLeft;
 	chatbotLeftElement.addEventListener('input', (ev) => {
-		this.chatbotLeft = ev.target.value;
-		chatbotLeftValueElement.innerHTML = toPaddingString(this.chatbotLeft);
+		chatbotLeft = ev.target.value;
+		chatbotLeftValueElement.innerHTML = toPaddingString(chatbotLeft);
 		redrawChatbotCanvas();
 	});
 
@@ -606,10 +599,10 @@ window.onload = async function () {
 	const chatbotTopValueElement = document.getElementById('chatbotTopValue');
 	chatbotTopElement.min = 0;
 	chatbotTopElement.max = 100;
-	chatbotTopElement.value = this.chatbotTop;
+	chatbotTopElement.value = chatbotTop;
 	chatbotTopElement.addEventListener('input', (ev) => {
-		this.chatbotTop = ev.target.value;
-		chatbotTopValueElement.innerHTML = toPaddingString(this.chatbotTop);
+		chatbotTop = ev.target.value;
+		chatbotTopValueElement.innerHTML = toPaddingString(chatbotTop);
 		redrawChatbotCanvas();
 	});
 
@@ -617,10 +610,10 @@ window.onload = async function () {
 	const chatbotHeightValueElement = document.getElementById('chatbotHeightValue');
 	chatbotHeightElement.min = 0;
 	chatbotHeightElement.max = 500;
-	chatbotHeightElement.value = this.chatbotHeight;
+	chatbotHeightElement.value = chatbotHeight;
 	chatbotHeightElement.addEventListener('input', (ev) => {
-		this.chatbotHeight = ev.target.value;
-		chatbotHeightValueElement.innerHTML = toPaddingString(this.chatbotHeight);
+		chatbotHeight = ev.target.value;
+		chatbotHeightValueElement.innerHTML = toPaddingString(chatbotHeight);
 		redrawChatbotCanvas();
 	});
 
@@ -726,3 +719,11 @@ function loadChatTools() {
 
 	return [chatTool1, chatTool2, chatTool3, chatTool4];
 }
+
+// Expose functions to global scope for HTML onclick handlers
+window.getConfig = getConfig;
+window.onSessionClicked = onSessionClicked;
+window.onSendMessageClicked = onSendMessageClicked;
+window.onMessageKeyPress = onMessageKeyPress;
+window.onVoiceChatClicked = onVoiceChatClicked;
+window.onTtstfMessageSubmit = onTtstfMessageSubmit;

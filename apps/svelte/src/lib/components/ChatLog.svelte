@@ -1,5 +1,6 @@
 <script lang="ts">
-	export let chatLog: Array<PersoInteractive.Chat>;
+	import type { Chat } from 'perso-interactive-sdk/client';
+	export let chatLog: Array<Chat>;
 </script>
 
 <ul class="chat-log">
