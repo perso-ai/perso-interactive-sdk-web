@@ -1,6 +1,7 @@
 {
 	"name": "@perso-interactive-sdk-web/app-vanilla",
 	"version": "1.0.0",
+	"type": "module",
 	"private": true,
 	"scripts": {
 		"dev": "vite",
@@ -8,6 +9,9 @@
 		"preview": "vite preview",
 		"lint": "prettier --config ./prettier.config.cjs --check .",
 		"format": "prettier --config ./prettier.config.cjs --write ."
+	},
+	"dependencies": {
+		"perso-interactive-sdk": "workspace:*"
 	},
 	"devDependencies": {
 		"@perso-interactive-sdk-web/prettier-config": "workspace:*",

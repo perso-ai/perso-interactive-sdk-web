@@ -17,3 +17,10 @@
 !.env.example
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+AGENTS.md
+
+/packages/perso-interactive-sdk/src/_session.ts
+
+# Build outputs
+/packages/perso-interactive-sdk/dist
