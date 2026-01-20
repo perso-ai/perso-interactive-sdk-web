@@ -18,7 +18,7 @@
     "tsc:vanilla": "pnpm --filter @perso-interactive-sdk-web/app-vanilla check:watch",
     "tsc:typescript": "pnpm --filter @perso-interactive-sdk-web/app-typescript check:watch",
     "tsc": "pnpm --filter @perso-interactive-sdk-web/app-svelte check && pnpm --filter @perso-interactive-sdk-web/app-vanilla check && pnpm --filter @perso-interactive-sdk-web/app-typescript check",
-    "test": "pnpm --filter @perso-interactive-sdk-web/perso-interactive-sdk test",
-    "test:watch": "pnpm --filter @perso-interactive-sdk-web/perso-interactive-sdk test:watch"
+    "test": "pnpm --filter perso-interactive-sdk-web test",
+    "test:watch": "pnpm --filter perso-interactive-sdk-web test:watch"
   }
 }

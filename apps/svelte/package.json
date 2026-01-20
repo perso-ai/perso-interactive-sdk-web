@@ -12,6 +12,9 @@
 		"lint": "prettier --config ./prettier.config.cjs --check . && eslint .",
 		"format": "prettier --config ./prettier.config.cjs --write ."
 	},
+	"dependencies": {
+		"perso-interactive-sdk-web": "workspace:*"
+	},
 	"devDependencies": {
 		"@perso-interactive-sdk-web/prettier-config": "workspace:*",
 		"@perso-interactive-sdk-web/eslint-config": "workspace:*",

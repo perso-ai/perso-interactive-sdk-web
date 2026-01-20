@@ -1,1 +1,1 @@
-/// <reference types="../../../core/1.0.0/perso-interactive-sdk.d.ts" />
+// Types are resolved via workspace dependency in package.json
