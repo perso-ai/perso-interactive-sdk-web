@@ -6,7 +6,6 @@ export class PersoInteractiveConfig {
 		public sessionId: string,
 		public chatbotWidth: number,
 		public chatbotHeight: number,
-		public enableVoiceChat: boolean,
 		public introMessage: string,
 		public clientTools: Array<ChatTool>
 	) {}
@@ -119,7 +118,7 @@ export function getDefaultClientTools(): Array<ChatTool> {
  * @returns Weather
  */
 function getCurrentWeather(location: string, units: Units = Units.CELSIUS): Promise<Weather> {
-	return new Promise<Weather>((resolve, reject) => {
+	return new Promise<Weather>((resolve, _reject) => {
 		resolve({
 			temperature: units === Units.CELSIUS ? 30 : 86,
 			condition: 'Mostly clear',

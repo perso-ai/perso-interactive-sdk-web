@@ -13,6 +13,7 @@
 		"format": "prettier --config ./prettier.config.cjs --write ."
 	},
 	"dependencies": {
+		"@perso-interactive-sdk-web/design-system": "workspace:*",
 		"perso-interactive-sdk-web": "workspace:*"
 	},
 	"devDependencies": {

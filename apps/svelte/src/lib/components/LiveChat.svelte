@@ -2,9 +2,10 @@
 	import { onDestroy, onMount } from 'svelte';
 	import Video from './Video.svelte';
 	import ChatLog from './ChatLog.svelte';
-	import ChatStates from './ChatStates.svelte';
 	import ChatInput from './ChatInput.svelte';
-	import VoiceChat from './VoiceChat.svelte';
+	import STTInput from './STTInput.svelte';
+	import TTSInput from './TTSInput.svelte';
+	import STFInput from './STFInput.svelte';
 	import TTSTFInput from './TTSTFInput.svelte';
 	import { type PersoInteractiveConfig } from '$lib/perso-interactive';
 	import {
@@ -14,21 +15,18 @@
 		LLMError,
 		ApiError,
 		LLMStreamingResponseError,
+		TTSError,
+		TTSDecodeError,
 		type Session,
 		type Chat
 	} from 'perso-interactive-sdk-web/client';
 
 	export let persoInteractiveConfig: PersoInteractiveConfig;
-
 	let session: Session;
 	let unsubscribes: (() => void)[] = [];
 
-	let chatStates: Set<ChatState> = new Set(); // 0: available 1: recording 2: analyzing 3: AI speaking
-	let sessionState: number = 0; // 0: Initial state(or closed) 1: starting 2: started
-	let sessionButton: HTMLButtonElement;
-
-	let videoWidth: number;
-	let videoHeight: number;
+	let chatStates: Set<ChatState> = new Set();
+	let sessionState: number = 0;
 
 	let chatLog: Array<Chat> = [];
 
@@ -37,12 +35,8 @@
 	let recording: boolean = false;
 	let chatStateDescriptionText: string = '';
 
-	// If 'chatStates' has no ChatState, it is in the Available state
 	$: available = chatStates.size === 0;
 
-	// It is in a state where a response is being generated (LLM),
-	// being converted into video (ANALYZING),
-	// or the AI human is speaking (SPEAKING).
 	$: processing =
 		chatStates.has(ChatState.LLM) ||
 		chatStates.has(ChatState.ANALYZING) ||
@@ -53,9 +47,6 @@
 	$: resetChatStateDescriptionText(chatStates);
 
 	onMount(async () => {
-		videoWidth = persoInteractiveConfig.chatbotWidth / (persoInteractiveConfig.chatbotHeight / 540);
-		videoHeight = 540;
-
 		sessionState = 0;
 
 		try {
@@ -64,7 +55,6 @@
 				persoInteractiveConfig.sessionId,
 				persoInteractiveConfig.chatbotWidth,
 				persoInteractiveConfig.chatbotHeight,
-				persoInteractiveConfig.enableVoiceChat,
 				persoInteractiveConfig.clientTools
 			);
 
@@ -75,19 +65,9 @@
 			return;
 		}
 
-		const unsubscribeChatLog = session.subscribeChatLog((log: Array<Chat>) => {
-			chatLog = log;
-		});
 		const unsubscribeChatStates = session.subscribeChatStates((states: Set<ChatState>) => {
 			chatStates = states;
 		});
-		// this.removeSttResultCallback = session.setSttResultCallback((sttResult) => {
-		//     if (sttResult !== '') {
-		//         session.processChat(sttResult);
-		//     } else {
-		//         alert('Your voice was not recognized.');
-		//     }
-		// });
 		const removeErrorHandler = session.setErrorHandler((error: Error) => {
 			if (error instanceof LLMError) {
 				const llmError = error as LLMError;
@@ -95,6 +75,13 @@
 					alert(llmError.underlyingError);
 				} else if (llmError.underlyingError instanceof LLMStreamingResponseError) {
 					alert(llmError.underlyingError.description);
+				}
+			} else if (error instanceof TTSError) {
+				const ttsError = error as TTSError;
+				if (ttsError.underlyingError instanceof ApiError) {
+					alert(`TTS API Error: ${ttsError.underlyingError}`);
+				} else if (ttsError.underlyingError instanceof TTSDecodeError) {
+					alert(`TTS Decode Error: ${ttsError.underlyingError.description}`);
 				}
 			}
 		});
@@ -104,61 +91,93 @@
 					getSessionInfo(
 						persoInteractiveConfig.persoInteractiveApiServerUrl,
 						persoInteractiveConfig.sessionId
-					).then((response: any) => {
-						alert(response.termination_reason);
-					});
+					)
+						.then((response: any) => {
+							if (response.termination_reason) {
+								alert(response.termination_reason);
+							}
+						})
+						.catch((error: unknown) => {
+							console.error('Failed to get session info:', error);
+						});
 				}, 500);
 			}
 
 			sessionState = 0;
 		});
-		unsubscribes.push(
-			unsubscribeChatLog,
-			unsubscribeChatStates,
-			/* removeSttResultCallback,*/ removeErrorHandler,
-			removeOnClose
-		);
-
-		if (
-			persoInteractiveConfig.introMessage !== null &&
-			persoInteractiveConfig.introMessage.length > 0
-		) {
-			// TODO: TEST로 주석
-			// setTimeout(() => {
-			//     session.processTTSTF(persoInteractiveConfig.introMessage);
-			// }, 1000);
-		}
+		unsubscribes.push(unsubscribeChatStates, removeErrorHandler, removeOnClose);
 	});
 
 	onDestroy(() => {
-		return () => {
-			unsubscribes.forEach((unsubscribe) => {
-				unsubscribe();
-			});
-		};
+		unsubscribes.forEach((unsubscribe) => {
+			unsubscribe();
+		});
+		session?.stopSession();
 	});
-
-	function onStopSessionClicked() {
-		session.stopSession();
-	}
 
 	function onStopSpeechClicked() {
 		session.clearBuffer();
 	}
 
 	function onMessageSubmit(message: string) {
-		session.processChat(message);
+		void processComplete(message);
 	}
 
-	function onTtstfMessageSubmit(message: string) {
-		session.processTTSTF(message);
+	async function processComplete(text: string) {
+		try {
+			chatLog = [...chatLog, { text, isUser: true, timestamp: new Date() }];
+
+			const llmGenerator = session.processLLM({ message: text });
+			let llmResponse = '';
+			const messageChunks: string[] = [];
+			for await (const chunk of llmGenerator) {
+				if (chunk.type === 'message') {
+					for (let i = messageChunks.length; i < chunk.chunks.length; i++) {
+						messageChunks.push(chunk.chunks[i]);
+					}
+					if (chunk.finish) {
+						llmResponse = chunk.message;
+					}
+				} else if (chunk.type === 'error') {
+					console.error('LLM error:', chunk.error);
+					return;
+				}
+			}
+
+			if (llmResponse.trim().length === 0) {
+				console.warn('LLM returned empty response');
+				return;
+			}
+
+			chatLog = [...chatLog, { text: llmResponse, isUser: false, timestamp: new Date() }];
+
+			const audioBlob = await session.processTTS(llmResponse);
+			if (!audioBlob) {
+				console.warn('TTS returned no audio');
+				return;
+			}
+
+			await session.processSTF(audioBlob, 'wav', llmResponse);
+		} catch (error) {
+			console.error('processComplete error:', error);
+		}
 	}
 
-	function onVoiceChatClicked() {
-		if (available) {
-			session.startVoiceChat();
-		} else {
-			session.stopVoiceChat();
+	async function onVoiceChatClicked() {
+		try {
+			if (available) {
+				session.startProcessSTT();
+			} else {
+				const text = await session.stopProcessSTT();
+				if (text.trim().length === 0) {
+					console.warn('STT returned empty text');
+					return;
+				}
+
+				await processComplete(text);
+			}
+		} catch (error) {
+			console.error(error);
 		}
 	}
 
@@ -166,110 +185,108 @@
 		session.setSrc(video);
 	}
 
-	async function resetChatStateDescriptionText(chatStates: Set<ChatState>) {
-		const chatStatesTextArr = [];
+	function resetChatStateDescriptionText(states: Set<ChatState>) {
 		if (available) {
 			chatStateDescriptionText = 'Available';
 			return;
 		}
-		if (chatStates.has(ChatState.RECORDING)) {
-			chatStatesTextArr.push('Recording');
-		}
-		if (chatStates.has(ChatState.LLM)) {
-			chatStatesTextArr.push('LLM');
-		}
-		if (chatStates.has(ChatState.ANALYZING)) {
-			chatStatesTextArr.push('Analyzing');
-		}
-		if (chatStates.has(ChatState.SPEAKING)) {
-			chatStatesTextArr.push('AI Speaking');
-		}
-
-		chatStateDescriptionText = chatStatesTextArr.join(' / ');
+		const arr = [];
+		if (states.has(ChatState.RECORDING)) arr.push('Recording');
+		if (states.has(ChatState.LLM)) arr.push('LLM');
+		if (states.has(ChatState.ANALYZING)) arr.push('Analyzing');
+		if (states.has(ChatState.SPEAKING)) arr.push('AI Speaking');
+		if (states.has(ChatState.TTS)) arr.push('TTS');
+		chatStateDescriptionText = arr.join(' / ');
 	}
 </script>
 
-<svelte:head>
-	<style>
-		p.title {
-			font-size: 36px;
-			font-weight: 800;
-			margin-top: 38px;
-			margin-bottom: 0px;
-			line-height: 49px;
-		}
-
-		button.session {
-			width: 380px;
-			height: 56px;
-			background-color: #644aff;
-			font-weight: 700;
-			font-size: 16px;
-			color: white;
-			border-style: none;
-			border-radius: 4px;
-			margin-top: 24px;
-		}
-		button.session:disabled {
-			background-color: #acabb2;
-		}
-		.input-method-container {
-			display: flex;
-			align-items: center;
-			border: 1px;
-			border-color: #979797;
-			border-width: 1px;
-			border-style: solid;
-			margin-top: 18px;
-			width: 1034px;
-			height: 95px;
-		}
-		.transparent {
-			background-color: transparent;
-		}
-		body {
-			padding: 0px;
-			margin: 0px;
-		}
-	</style>
-</svelte:head>
-
-<div style="display: block; padding-left: 47px;">
-	<p class="title">Perso Interactive SDK + Svelte demo</p>
-	<div style="display: flex; margin-top: 84px;">
+<div class="avatar-row">
+	<!-- STT Section -->
+	<section class="section">
 		{#if session != null}
-			<Video width={videoWidth} height={videoHeight} {onVideoReady} />
+			<STTInput {session} enableButton={available} />
 		{:else}
-			<div
-				class="border1px"
-				style="display:flex; width:{videoWidth}px; height:{videoHeight}px;"
-			></div>
+			<h2>STT (Speech-to-Text)</h2>
+			<p class="empty-hint">Session not connected</p>
 		{/if}
-		<ChatLog {chatLog} />
+	</section>
+
+	<!-- TTS Section -->
+	<section class="section">
+		{#if session != null}
+			<TTSInput {session} enableButton={available} />
+		{:else}
+			<h2>TTS (Text-to-Speech)</h2>
+			<p class="empty-hint">Session not connected</p>
+		{/if}
+	</section>
+
+	<!-- Avatar + STF + Chat row -->
+	<div class="avatar-bottom-row">
+		<!-- Avatar Section -->
+		<section class="section avatar-section">
+			<h2>Avatar</h2>
+			{#if session != null}
+				<Video {onVideoReady} />
+			{:else}
+				<video></video>
+			{/if}
+			<div class="state-panel">
+				<p>
+					Chat State:
+					<span id="chatStateDescription" class={available ? 'state-available' : 'state-busy'}>
+						{chatStateDescriptionText}
+					</span>
+				</p>
+				<div class="row avatar-buttons">
+					<button
+						id="voice"
+						class="btn-sm {recording ? 'recording' : ''}"
+						disabled={!available && !recording}
+						on:click={onVoiceChatClicked}
+					>
+						{recording ? 'Stop Voice' : 'Voice Chat'}
+					</button>
+					<button
+						class="btn-sm"
+						on:click={onStopSpeechClicked}
+						disabled={!chatStates.has(ChatState.SPEAKING)}
+					>
+						Stop Avatar Speech
+					</button>
+				</div>
+				<p class="section-hint">Voice Chat uses STT &rarr; LLM &rarr; TTS &rarr; STF pipeline</p>
+			</div>
+		</section>
+
+		<!-- Right side: TTSTF + STF + Chat -->
+		<div class="avatar-right">
+			<!-- TTSTF Section -->
+			<section class="section">
+				{#if session != null}
+					<TTSTFInput {session} enableButton={available} />
+				{:else}
+					<h2>TTSTF (Text-to-Speech-to-Face)</h2>
+					<p class="empty-hint">Session not connected</p>
+				{/if}
+			</section>
+
+			<!-- STF Section -->
+			<section class="section">
+				{#if session != null}
+					<STFInput {session} enableButton={available} />
+				{:else}
+					<h2>STF (Speech-to-Face)</h2>
+					<p class="empty-hint">Session not connected</p>
+				{/if}
+			</section>
+
+			<!-- Chat Section -->
+			<section class="section">
+				<h2>Chat</h2>
+				<ChatLog {chatLog} />
+				<ChatInput enableSendButton={available} {onMessageSubmit} />
+			</section>
+		</div>
 	</div>
-	<div style="display: block;">
-		<button
-			bind:this={sessionButton}
-			class="session"
-			on:click={sessionState === 2 ? onStopSessionClicked : null}
-			disabled={sessionState === 2 ? false : true}
-		>
-			{sessionState === 2 ? 'STOP' : 'START'}
-		</button>
-	</div>
-	<ChatStates
-		enableStopSpeech={processing ? true : false}
-		{chatStateDescriptionText}
-		{onStopSpeechClicked}
-	/>
-	<ChatInput enableSendButton={available ? true : false} {onMessageSubmit} />
-	{#if persoInteractiveConfig.enableVoiceChat}
-		<VoiceChat
-			enableButton={available || recording ? true : false}
-			buttonText={recording ? 'Stop' : 'Start'}
-			{onVoiceChatClicked}
-		/>
-	{/if}
-	<TTSTFInput enableSendButton={available ? true : false} onMessageSubmit={onTtstfMessageSubmit} />
-	<br />
 </div>

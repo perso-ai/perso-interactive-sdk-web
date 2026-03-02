@@ -20,6 +20,8 @@
   &nbsp;•&nbsp;
   <a href="#quick-look">Quick Look</a>
   &nbsp;•&nbsp;
+  <a href="./packages/perso-interactive-sdk/example-guide/en/README.md">Example Guide</a>
+  &nbsp;•&nbsp;
   <a href="./core/api-docs.md">API Reference</a>
 </p>
 
@@ -32,7 +34,7 @@ Provides Perso Interactive Web SDK and demo apps.
 ### **Demo App Spec**
 
 - Sveltekit
-- VanlliaJS
+- VanillaJS
 - Typescript
 
 ## Installation
@@ -89,7 +91,7 @@ import { createSessionId, getIntroMessage } from "perso-interactive-sdk-web/serv
 3.  Build the SDK:
 
     ```bash
-      pnpm build
+      pnpm build:sdk
     ```
 
 4.  Start any demo with the dedicated script (each command runs from the repo root):
@@ -129,7 +131,7 @@ import { createSessionId, getIntroMessage } from "perso-interactive-sdk-web/serv
 
 1. Collect the Perso Interactive API server URL and API key from the operator.
 2. Fetch configuration options using `getLLMs()`, `getTTSs()`, `getSTTs()`, `getModelStyles()`, `getPrompts()`, `getDocuments()`, `getBackgroundImages()`, and `getMcpServers()` for the UI.
-3. When the user clicks **START**, invoke `createSessionId` with the selected options (plus optional padding, voice chat toggle, and client tool selections), then `createSession` to bind the media stream to a `<video>` element.
+3. When the user clicks **START**, invoke `createSessionId` with the selected options (plus optional padding and client tool selections), then `createSession` to bind the media stream to a `<video>` element.
 4. Subscribe to chat logs and chat states to render transcripts, voice/speech controls, and availability indicators. Use client tools for app-specific actions and handle SDK errors via the provided callbacks.
 
 ## Quick Look
@@ -180,9 +182,7 @@ const session = await createSession(
   sessionId,
   chatbotWidth,
   chatbotHeight,
-  enableVoiceChat,
-  introMessage ?? "",
-  clientTools ?? [], // Refer to the following reference
+  clientTools ?? [] // Refer to the following reference
 );
 ```
 
@@ -227,13 +227,15 @@ const session = await createSession(
   sessionId,
   chatbotWidth,
   chatbotHeight,
-  enableVoiceChat,
-  introMessage ?? "",
-  clientTools ?? [], // Refer to the following reference
+  clientTools ?? [] // Refer to the following reference
 );
 ```
 
-> reference) [Tool calling example](https://github.com/perso-ai/perso-interactive-sdk-web-web/blob/dabcd677b3e610b335dca16536ec25fba501455c/apps/svelte/src/lib/perso-interactive.ts#L14)
+> reference) Tool calling example: [English](./packages/perso-interactive-sdk/example-guide/en/05-pipeline.ts#L228)
+
+## Example Guide
+
+> 📖 **Example Guide**: [English](./packages/perso-interactive-sdk/example-guide/en/README.md)
 
 ## API Reference
 

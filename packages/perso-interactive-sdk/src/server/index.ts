@@ -17,5 +17,5 @@
  * ```
  */
 
-export { createSessionId, getIntroMessage } from "./init";
-export { PersoUtil as PersoUtilServer, ApiError } from "../shared";
+export { createSessionId, getIntroMessage } from './init';
+export { PersoUtil as PersoUtilServer, ApiError } from '../shared';

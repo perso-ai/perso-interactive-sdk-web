@@ -1,0 +1,65 @@
+/* Chat log */
+
+.chat-log {
+	overflow-y: auto;
+	border: 1px solid #ddd;
+	border-radius: 6px;
+	padding: 12px;
+	background: #fafafa;
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	height: 330px;
+}
+
+.chat-input-row {
+	margin-top: 8px;
+}
+
+.empty-hint {
+	color: #aaa;
+	text-align: center;
+	font-size: 13px;
+	margin: 32px 0;
+}
+
+/* Chat bubbles */
+
+.chat-bubble {
+	max-width: 80%;
+	padding: 8px 12px;
+	border-radius: 10px;
+	font-size: 13px;
+	line-height: 1.5;
+	word-break: break-word;
+}
+
+.chat-bubble.user {
+	align-self: flex-end;
+	background: #644aff;
+	color: white;
+}
+
+.chat-bubble.ai {
+	align-self: flex-start;
+	background: #343434;
+	color: white;
+}
+
+.chat-role {
+	font-size: 10px;
+	font-weight: 600;
+	opacity: 0.7;
+	margin-bottom: 2px;
+}
+
+.chat-text {
+	white-space: pre-wrap;
+}
+
+.chat-time {
+	font-size: 10px;
+	opacity: 0.5;
+	margin-top: 3px;
+	text-align: right;
+}

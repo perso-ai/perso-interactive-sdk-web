@@ -3,6 +3,7 @@
 /apps/svelte/node_modules
 /apps/vanilla/node_modules
 /apps/typescript/node_modules
+/apps/sdk-tester/node_modules
 /packages/perso-interactive-sdk/node_modules
 /packages/tsconfig/node_modules
 /packages/eslint-config/node_modules
@@ -18,9 +19,14 @@
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 
-AGENTS.md
+.sisyphus/
+.omc
 
 /packages/perso-interactive-sdk/src/_session.ts
 
 # Build outputs
 /packages/perso-interactive-sdk/dist
+/apps/vanilla/dist
+/apps/svelte/dist
+/apps/typescript/dist
+/apps/sdk-tester/dist

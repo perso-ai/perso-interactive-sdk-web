@@ -17,16 +17,74 @@ pnpm add perso-interactive-sdk-web
 
 ## Usage
 
+> 📖 **Looking for step-by-step examples?** See the [Example Guide](./example-guide/en/README.md) for annotated code snippets covering LLM, TTS, STT, STF, and full pipeline patterns.
+
 The SDK provides two entry points:
 
 ### Server-side (`perso-interactive-sdk-web/server`)
 
-Use this module in Node.js/SvelteKit/Next.js server environments to create sessions securely without exposing your API key.
+Use this module in Node.js server environments to create sessions securely without exposing your API key. The client examples below (ES Module, TypeScript, IIFE) all call this server endpoint to obtain a `sessionId`.
+
+#### Express.js Example
+
+This example uses [Express](https://www.npmjs.com/package/express). Install the required packages:
+
+```bash
+# npm
+npm install express perso-interactive-sdk-web
+
+# yarn
+yarn add express perso-interactive-sdk-web
+
+# pnpm
+pnpm add express perso-interactive-sdk-web
+```
+
+```javascript
+// server.js
+const express = require("express");
+const { createSessionId } = require("perso-interactive-sdk-web/server");
+
+const app = express();
+
+const API_SERVER = "https://live-api.perso.ai";
+const API_KEY = process.env.PERSO_INTERACTIVE_API_KEY;
+
+app.post("/api/session", async (req, res) => {
+  try {
+    const sessionId = await createSessionId(API_SERVER, API_KEY, {
+      using_stf_webrtc: true,
+      model_style: "<model_style_name>",
+      prompt: "<prompt_id>",
+      llm_type: "<llm_name>",
+      tts_type: "<tts_name>",
+      stt_type: "<stt_name>",
+    });
+    res.json({ sessionId });
+  } catch (error) {
+    console.error("Session creation failed:", error);
+    res.status(500).json({ error: "Failed to create session" });
+  }
+});
+
+app.listen(3000, () => console.log("Server running on port 3000"));
+```
+
+> ⚠️ **Security Warning**: Never use `createSessionId` on the client-side in production. Exposing your API key in browser code can lead to unauthorized access and quota abuse. Always create sessions on the server and pass only the `sessionId` to the client.
+
+#### Client-side Testing Only
+
+> ⚠️ **Warning**: The following example exposes your API key in the browser. Use this **only for local testing**. Never deploy this to production. If your API key is compromised due to client-side usage, the SDK provider assumes no responsibility.
 
 ```typescript
-import { createSessionId, getIntroMessage } from "perso-interactive-sdk-web/server";
+import {
+  createSessionId,
+  createSession,
+} from "perso-interactive-sdk-web/client";
 
-// Create a session on the server
+const apiServer = "https://live-api.perso.ai";
+const apiKey = "YOUR_API_KEY"; // ⚠️ NEVER commit or expose this in production
+
 const sessionId = await createSessionId(apiServer, apiKey, {
   using_stf_webrtc: true,
   model_style: "<model_style_name>",
@@ -36,11 +94,9 @@ const sessionId = await createSessionId(apiServer, apiKey, {
   stt_type: "<stt_name>",
 });
 
-// Get intro message for a prompt
-const introMessage = await getIntroMessage(apiServer, apiKey, promptId);
+const session = await createSession(apiServer, sessionId, 1920, 1080, []);
+session.setSrc(document.getElementById("video"));
 ```
-
-> ⚠️ **Security Warning**: Never use `createSessionId` on the client-side. Exposing your API key in browser code can lead to unauthorized access and quota abuse. Always create sessions on the server and pass only the `sessionId` to the client.
 
 ### Client-side (`perso-interactive-sdk-web/client`)
 
@@ -51,18 +107,17 @@ import {
   createSession,
   ChatTool,
   ChatState,
-  getAllSettings,
 } from "perso-interactive-sdk-web/client";
 
-// Create a session (sessionId should come from server)
-const session = await createSession(
-  apiServer,
-  sessionId,
-  width,
-  height,
-  enableVoiceChat,
-  clientTools,
-);
+const apiServer = "https://live-api.perso.ai";
+
+// Obtain sessionId from your server (see Express.js example above)
+const sessionId = await fetch("/api/session", { method: "POST" })
+  .then((res) => res.json())
+  .then((data) => data.sessionId);
+
+// Create a session
+const session = await createSession(apiServer, sessionId, 1920, 1080, []);
 
 // Bind to video element
 session.setSrc(videoElement);
@@ -80,8 +135,10 @@ session.subscribeChatLog((chatLog) => {
 // Send a message
 session.processChat("Hello!");
 
-// Start voice chat
-session.startVoiceChat();
+// Voice chat using STT
+await session.startProcessSTT();
+const text = await session.stopProcessSTT();
+session.processChat(text);
 
 // Stop session
 session.stopSession();
@@ -116,28 +173,45 @@ const session = await createSession(
   sessionId,
   width,
   height,
-  enableVoiceChat,
-  [weatherTool],
+  [weatherTool]
 );
 ```
 
 ### Browser (IIFE)
 
-For direct browser usage via script tag:
+For direct browser usage via `<script>` tag without a bundler. The SDK exposes a global `PersoInteractive` namespace:
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/perso-interactive-sdk-web@2/dist/client/index.iife.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/perso-interactive-sdk-web@latest/dist/client/index.iife.js"></script>
 <script>
-  const session = await PersoInteractive.createSession(
-    apiServer,
-    sessionId,
-    width,
-    height,
-    enableVoiceChat,
-    []
-  );
+  async function start() {
+    const apiServer = "https://live-api.perso.ai";
+
+    // Obtain sessionId from your server (see Express.js example above)
+    const sessionId = await fetch("/api/session", { method: "POST" })
+      .then((res) => res.json())
+      .then((data) => data.sessionId);
+
+    const session = await PersoInteractive.createSession(
+      apiServer,
+      sessionId,
+      1920,
+      1080,
+      []
+    );
+
+    session.setSrc(document.getElementById("video"));
+  }
+
+  start();
 </script>
 ```
+
+> **Note**: The browser examples above call `POST /api/session` on your server. See the [Express.js example](#expressjs-example) for the server implementation. Never expose your API key in client-side code.
+
+### Example Guide
+
+> 📖 **Example Guide**: [English](./example-guide/en/README.md)
 
 ## API Reference
 
@@ -154,10 +228,10 @@ For direct browser usage via script tag:
 
 | Export                                                                             | Description                                                |
 | ---------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| `createSession(apiServer, sessionId, width, height, enableVoiceChat, clientTools)` | Create a session                                           |
+| `createSession(apiServer, sessionId, width, height, clientTools)`                  | Create a session                                           |
 | `Session`                                                                          | Session class                                              |
 | `ChatTool`                                                                         | Client tool class                                          |
-| `ChatState`                                                                        | Enum for chat states (RECORDING, LLM, ANALYZING, SPEAKING) |
+| `ChatState`                                                                        | Enum for chat states (RECORDING, LLM, ANALYZING, SPEAKING, TTS) |
 | `getLLMs(apiServer, apiKey)`                                                       | Get available LLM providers                                |
 | `getTTSs(apiServer, apiKey)`                                                       | Get available TTS providers                                |
 | `getSTTs(apiServer, apiKey)`                                                       | Get available STT providers                                |
@@ -168,28 +242,51 @@ For direct browser usage via script tag:
 | `getMcpServers(apiServer, apiKey)`                                                 | Get available MCP servers                                  |
 | `getAllSettings(apiServer, apiKey)`                                                | Get all settings at once                                   |
 | `getSessionInfo(apiServer, sessionId)`                                             | Get session metadata                                       |
+| `createSessionId(apiServer, apiKey, params)`                                       | Create session ID (exposes API key in browser)             |
 | `ApiError`                                                                         | Error class for API errors                                 |
 | `LLMError`                                                                         | Error class for LLM errors                                 |
 | `LLMStreamingResponseError`                                                        | Error class for streaming errors                           |
+| `STTError`                                                                         | Error class for STT errors                                 |
+| `TTSError`                                                                         | Error class for TTS errors                                 |
+| `TTSDecodeError`                                                                   | Error class for TTS decode errors                          |
+| `LlmProcessor`                                                                     | Standalone LLM streaming processor                         |
+| `WavRecorder`                                                                      | Audio recorder producing WAV files                         |
+| `createWavRecorder(options?)`                                                      | Factory function for WavRecorder                           |
+| `getWavSampleRate(wavData)`                                                        | Extract sample rate from WAV data                          |
+| `TTS_TARGET_SAMPLE_RATE`                                                           | TTS target sample rate constant (16000)                    |
 
 ### Session Methods
 
-| Method                          | Description                    |
-| ------------------------------- | ------------------------------ |
-| `setSrc(videoElement)`          | Bind session to video element  |
-| `processChat(message)`          | Send a message to the LLM      |
-| `processTTSTF(message)`         | Speak a message without LLM    |
-| `startVoiceChat()`              | Start recording voice          |
-| `stopVoiceChat()`               | Stop recording and send to STT |
-| `clearBuffer()`                 | Cancel ongoing operations      |
-| `changeSize(width, height)`     | Resize the avatar canvas       |
-| `stopSession()`                 | Close the session              |
-| `subscribeChatStates(callback)` | Subscribe to state changes     |
-| `subscribeChatLog(callback)`    | Subscribe to chat log updates  |
-| `setErrorHandler(callback)`     | Subscribe to errors            |
-| `onClose(callback)`             | Subscribe to session close     |
+| Method                              | Description                                    |
+| ----------------------------------- | ---------------------------------------------- |
+| `setSrc(videoElement)`              | Bind session to video element                  |
+| `processChat(message)`              | Send a message to the LLM                      |
+| `processLLM(options)`               | Stream LLM responses with full control         |
+| `processTTSTF(message)`             | Speak a message without LLM                    |
+| `processTTS(message, options?)`     | Generate TTS audio from text (returns Blob)    |
+| `processSTF(file, format, message)` | Send audio/video to STF pipeline                |
+| `startProcessSTT(timeout?)`         | Start recording voice for STT                  |
+| `stopProcessSTT(language?)`         | Stop recording and get text                    |
+| `isSTTRecording()`                  | Check if STT recording is in progress          |
+| `transcribeAudio(audio, language?)` | Transcribe audio Blob/File to text             |
+| `getMessageHistory()`               | Get LLM conversation history                   |
+| `getRemoteStream()`                 | Get AI human's media stream                    |
+| `getLocalStream()`                  | ~~Get user's audio stream~~ (Deprecated)       |
+| `getSessionId()`                    | Get session ID                                 |
+| `clearBuffer()`                     | Stop AI human speaking                         |
+| `changeSize(width, height)`         | Resize the avatar canvas                       |
+| `stopSession()`                     | Close the session                              |
+| `subscribeChatStates(callback)`     | Subscribe to state changes                     |
+| `subscribeChatLog(callback)`        | Subscribe to chat log updates                  |
+| `setSttResultCallback(callback)`    | Set STT result callback                        |
+| `setErrorHandler(callback)`         | Subscribe to errors                            |
+| `onClose(callback)`                 | Subscribe to session close                     |
 
-## API Reference
+### Session Properties
+
+| Property                 | Type           | Description                                    |
+| ------------------------ | -------------- | ---------------------------------------------- |
+| `lastRecordedAudioFile`  | `File \| null` | Last recorded WAV audio file from STT          |
 
 For detailed API documentation, see [api-docs.md](../../core/api-docs.md).
 
