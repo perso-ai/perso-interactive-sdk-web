@@ -1,4 +1,12 @@
+import '@perso-interactive-sdk-web/design-system/styles/base.css';
+import '@perso-interactive-sdk-web/design-system/styles/components.css';
+import '@perso-interactive-sdk-web/design-system/styles/chat.css';
+import './global.css';
 import * as PersoInteractive from 'perso-interactive-sdk-web/client';
+import { processChat, stopSpeech } from './sdk-handlers/llm';
+import { processTTS, playAudio } from './sdk-handlers/tts';
+import { startProcessSTT, stopProcessSTT, toggleSTT } from './sdk-handlers/stt';
+import { detectFormat, formatSize, processSTF, setupDropZone } from './sdk-handlers/stf';
 
 var apiServer = null;
 var apiKey = null;
@@ -8,9 +16,8 @@ var screenOrientation = null;
 var chatbotLeft = 0;
 var chatbotTop = 0;
 var chatbotHeight = 0;
-var chatStates = new Set(); // enum PersoInteractive.ChatState [ RECORDING, LLM, ANALYZING, SPEAKING ], 'chatStates' can have multiple ChatState values.
-var sessionState = 0; // 0: Initial state(or closed) 1: starting 2: started
-var enableVoiceChat = true;
+var chatStates = new Set();
+var sessionState = 0;
 var removeOnClose = null;
 var unsubscribeChatStates = null;
 var unsubscribeChatLog = null;
@@ -29,16 +36,70 @@ function onSessionClicked() {
 	}
 }
 
-function onVoiceChatClicked() {
+// @deprecated Use onVoiceChatClicked() with processLLM + processTTS + processSTF flow instead.
+// function onVoiceChatClicked() {
+// 	if (available()) {
+// 		session.startVoiceChat();
+// 	} else {
+// 		session.stopVoiceChat();
+// 	}
+// }
+
+function appendChatBubble(message, isUser) {
+	var chatLog = document.getElementById('chatLog');
+	var bubble = document.createElement('div');
+	bubble.className = isUser ? 'chat-bubble user' : 'chat-bubble ai';
+
+	var role = document.createElement('div');
+	role.className = 'chat-role';
+	role.textContent = isUser ? 'You' : 'AI';
+
+	var textEl = document.createElement('div');
+	textEl.className = 'chat-text';
+	textEl.textContent = message;
+
+	var time = document.createElement('div');
+	time.className = 'chat-time';
+	time.textContent = new Date().toLocaleTimeString();
+
+	bubble.appendChild(role);
+	bubble.appendChild(textEl);
+	bubble.appendChild(time);
+	chatLog.appendChild(bubble);
+	chatLog.scrollTop = chatLog.scrollHeight;
+}
+
+async function processComplete(text, options) {
+	if (!session) return;
+
+	appendChatBubble(text, true);
+
+	const llmResponse = await processChat(session, text, options);
+	if (llmResponse) {
+		appendChatBubble(llmResponse, false);
+	}
+}
+
+async function onVoiceChatClicked() {
 	var voiceChatButton = document.getElementById('voice');
-	if (voiceChatButton.disabled) {
+	if (voiceChatButton.disabled || !session) {
 		return;
 	}
 
-	if (available()) {
-		session.startVoiceChat();
-	} else {
-		session.stopVoiceChat();
+	try {
+		if (available()) {
+			await startProcessSTT(session);
+		} else {
+			const text = await stopProcessSTT(session);
+			if (text.trim().length === 0) {
+				console.warn('STT returned empty text');
+				return;
+			}
+
+			await processComplete(text);
+		}
+	} catch (error) {
+		console.error(error);
 	}
 }
 
@@ -46,7 +107,7 @@ function onSendMessageClicked() {
 	if (chatStates.size === 0) {
 		sendMessage();
 	} else {
-		stopSpeech();
+		onStopSpeech();
 	}
 }
 
@@ -56,23 +117,195 @@ function onMessageKeyPress(keyEvent) {
 	}
 }
 
-function onTtstfMessageSubmit() {
-	var messageElement = document.getElementById('ttfMessage');
+// TTSTF functions
+function onTtstfSendClicked() {
+	var messageElement = document.getElementById('ttstfMessage');
 	var message = messageElement.value.trim();
-	if (message.length > 0) {
-		messageElement.value = '';
-		session.processTTSTF(message);
+	if (!session || message.length === 0) return;
+	messageElement.value = '';
+	session.processTTSTF(message);
+}
+
+function onTtstfKeyPress(keyEvent) {
+	if (keyEvent.key === 'Enter') {
+		onTtstfSendClicked();
 	}
+}
+
+// STT REST API functions
+async function onSttRestButtonClicked() {
+	var sttButton = document.getElementById('sttRestButton');
+	var sttStatus = document.getElementById('sttRestStatus');
+	var sttResult = document.getElementById('sttRestResult');
+
+	if (!session) {
+		return;
+	}
+
+	var language = document.getElementById('sttRestLanguage').value;
+
+	sttButton.disabled = true;
+	sttResult.value = '';
+
+	if (!session.isSTTRecording()) {
+		sttStatus.innerText = 'Starting...';
+	} else {
+		sttStatus.innerText = 'Processing...';
+		sttStatus.className = 'status processing';
+	}
+
+	try {
+		const result = await toggleSTT(session, { language, timeout: 30000 });
+
+		switch (result.action) {
+			case 'started':
+				sttButton.innerText = 'Stop STT';
+				sttButton.disabled = false;
+				sttStatus.innerText = 'Recording...';
+				sttStatus.className = 'status recording';
+				break;
+			case 'completed':
+				sttButton.innerText = 'Start STT';
+				sttButton.disabled = false;
+				sttResult.value = result.text;
+				sttStatus.innerText = 'Completed';
+				sttStatus.className = 'status success';
+				break;
+			case 'empty':
+				sttButton.innerText = 'Start STT';
+				sttButton.disabled = false;
+				sttStatus.innerText = 'No speech detected';
+				sttStatus.className = 'status warning';
+				break;
+		}
+	} catch (error) {
+		sttButton.innerText = 'Start STT';
+		sttButton.disabled = false;
+		sttStatus.innerText = 'Error: ' + error.message;
+		sttStatus.className = 'status error';
+	}
+}
+
+async function onTtsMessageSubmit() {
+	const messageElement = document.getElementById('ttsMessage');
+	const audioElement = document.getElementById('ttsAudio');
+	const message = messageElement.value.trim();
+	if (message.length > 0 && session != null) {
+		const audioBlob = await processTTS(session, message);
+		if (audioBlob) {
+			playAudio(audioBlob, audioElement);
+		}
+	}
+}
+
+var pendingStfFile = null;
+
+function onStfFileSelected(file) {
+	const stfStatus = document.getElementById('stfStatus');
+	const fileInput = document.getElementById('stfFile');
+	const fileInfo = document.getElementById('stfFileInfo');
+	const fileName = document.getElementById('stfFileName');
+	const fileSize = document.getElementById('stfFileSize');
+	const executeButton = document.getElementById('stfExecute');
+
+	const format = detectFormat(file.name);
+	if (!format) {
+		stfStatus.innerText = 'Error: Only mp3 and wav files are supported';
+		stfStatus.className = 'status error';
+		fileInput.value = '';
+		return;
+	}
+
+	fileName.textContent = file.name;
+	fileSize.textContent = formatSize(file.size);
+	fileInfo.style.display = 'flex';
+	stfStatus.innerText = '';
+	stfStatus.className = 'status';
+
+	pendingStfFile = file;
+	executeButton.disabled = false;
+}
+
+async function executeSTF() {
+	const stfStatus = document.getElementById('stfStatus');
+	const executeButton = document.getElementById('stfExecute');
+
+	if (!session) {
+		stfStatus.innerText = 'Error: Session not started';
+		stfStatus.className = 'status error';
+		return;
+	}
+
+	if (!pendingStfFile) {
+		stfStatus.innerText = 'Error: No file selected';
+		stfStatus.className = 'status error';
+		return;
+	}
+
+	const format = detectFormat(pendingStfFile.name);
+	if (!format) {
+		stfStatus.innerText = 'Error: Only mp3 and wav files are supported';
+		stfStatus.className = 'status error';
+		return;
+	}
+
+	try {
+		executeButton.disabled = true;
+		stfStatus.innerText = 'Processing...';
+		stfStatus.className = 'status processing';
+
+		await processSTF(session, pendingStfFile, format);
+
+		stfStatus.innerText = 'Completed';
+		stfStatus.className = 'status success';
+	} catch (error) {
+		stfStatus.innerText = 'Error: ' + error.message;
+		stfStatus.className = 'status error';
+	} finally {
+		executeButton.disabled = false;
+	}
+}
+
+function initStfDropZone() {
+	const executeButton = document.getElementById('stfExecute');
+
+	setupDropZone(
+		{
+			dropZone: document.getElementById('stfDropZone'),
+			fileInput: document.getElementById('stfFile'),
+			fileInfo: document.getElementById('stfFileInfo'),
+			statusSpan: document.getElementById('stfStatus'),
+			removeButton: document.getElementById('stfFileRemove'),
+			executeButton
+		},
+		(file) => {
+			onStfFileSelected(file);
+		}
+	);
+
+	executeButton.addEventListener('click', () => {
+		executeSTF();
+	});
 }
 
 async function getConfig() {
 	apiServer = document.getElementById('apiServer').value;
 	apiKey = document.getElementById('apiKey').value;
 
+	var authorizeBtn = document.getElementById('authorize');
+	authorizeBtn.disabled = true;
+	authorizeBtn.innerText = 'Loading...';
+
 	try {
 		config = await PersoInteractive.getAllSettings(apiServer, apiKey);
 	} catch (e) {
+		authorizeBtn.disabled = false;
+		authorizeBtn.innerText = 'Authorize';
 		alert(e);
+		return;
+	}
+
+	if (!config) {
 		return;
 	}
 
@@ -129,10 +362,13 @@ async function getConfig() {
 
 	const promptOptions = document.getElementById('promptOptions');
 	promptOptions.innerHTML = '';
-	promptOptions.addEventListener('change', (ev) => {
+	promptOptions.onchange = () => {
+		if (!config) {
+			return;
+		}
 		const introMessage = document.getElementById('introMessage');
 		introMessage.innerText = config.prompts[parseInt(promptOptions.value)].intro_message;
-	});
+	};
 
 	config.prompts.forEach((value, index) => {
 		const option = document.createElement('option');
@@ -162,20 +398,35 @@ async function getConfig() {
 
 	const mcpServersContainer = document.getElementById('mcpServersContainer');
 	mcpServersContainer.innerHTML = '';
-	config.mcpServers.forEach((value, index) => {
-		const label = document.createElement('label');
-		label.style = 'width: fit-content;';
+	if (config.mcpServers.length === 0) {
+		const span = document.createElement('span');
+		span.className = 'empty-hint';
+		span.textContent = 'No MCP servers available';
+		mcpServersContainer.appendChild(span);
+	} else {
+		config.mcpServers.forEach((value, index) => {
+			const label = document.createElement('label');
+			label.style.width = 'fit-content';
 
-		const input = document.createElement('input');
-		input.value = index;
-		input.name = 'mcpServers';
-		input.type = 'checkbox';
+			const input = document.createElement('input');
+			input.value = index;
+			input.name = 'mcpServers';
+			input.type = 'checkbox';
 
-		label.appendChild(input);
+			label.appendChild(input);
+			label.append(` ${value.name}`);
+			mcpServersContainer.appendChild(label);
+		});
+	}
 
-		label.innerHTML += value.name;
-		mcpServersContainer.appendChild(label);
-	});
+	document.getElementById('step2').classList.remove('disabled');
+	document.getElementById('step3').classList.remove('disabled');
+	document.getElementById('step4').classList.remove('disabled');
+	document.getElementById('step5').classList.remove('disabled');
+	document.getElementById('sessionButton').disabled = false;
+
+	authorizeBtn.disabled = false;
+	authorizeBtn.innerText = 'Authorize';
 }
 
 async function startSession() {
@@ -195,6 +446,12 @@ async function startSession() {
 		removeSttResultCallback();
 	}
 
+	removeErrorHandler = null;
+	removeOnClose = null;
+	unsubscribeChatStates = null;
+	unsubscribeChatLog = null;
+	removeSttResultCallback = null;
+
 	let width, height;
 	if (screenOrientation === 'portrait') {
 		width = 1080;
@@ -202,6 +459,12 @@ async function startSession() {
 	} else {
 		width = 1920;
 		height = 1080;
+	}
+
+	if (!config) {
+		alert('Please authorize before starting a session.');
+		applySessionState(0);
+		return;
 	}
 
 	const llmOption = config.llms[parseInt(document.getElementById('llmOptions').value)];
@@ -219,7 +482,6 @@ async function startSession() {
 	let backgroundImageOptionIndex = document.getElementById('backgroundImage').value;
 	let backgroundImageKey;
 	if (backgroundImageOptionIndex.length === 0) {
-		// ''
 		backgroundImageKey = null;
 	} else {
 		backgroundImageKey =
@@ -229,7 +491,6 @@ async function startSession() {
 	let documentOptionIndex = document.getElementById('documentOptions').value;
 	let documentKey;
 	if (documentOptionIndex.length === 0) {
-		// ''
 		documentKey = null;
 	} else {
 		documentKey = config.documents[parseInt(documentOptionIndex)].document_id;
@@ -237,7 +498,7 @@ async function startSession() {
 
 	const mcpServerCheckBoxes = document.getElementsByName('mcpServers');
 	let mcpServersKey = [];
-	mcpServerCheckBoxes.forEach((element, key, parent) => {
+	mcpServerCheckBoxes.forEach((element) => {
 		if (element.checked) {
 			const mcpKey = config.mcpServers[element.value].mcpserver_id;
 			mcpServersKey.push(mcpKey);
@@ -246,7 +507,7 @@ async function startSession() {
 
 	const clientToolsCheckBoxes = document.getElementsByName('clientTools');
 	let selectedClientTools = [];
-	clientToolsCheckBoxes.forEach((element, key, parent) => {
+	clientToolsCheckBoxes.forEach((element) => {
 		if (element.checked) {
 			const clientTool = clientTools[element.value];
 			selectedClientTools.push(clientTool);
@@ -276,11 +537,9 @@ async function startSession() {
 			sessionId,
 			width,
 			height,
-			enableVoiceChat,
 			selectedClientTools
 		);
 
-		videoElement.classList = screenOrientation;
 		session.setSrc(videoElement);
 
 		applyChatStates(null);
@@ -300,27 +559,32 @@ async function startSession() {
 			} else if (error.underlyingError instanceof PersoInteractive.LLMStreamingResponseError) {
 				alert(error.underlyingError.description);
 			}
+		} else if (error instanceof PersoInteractive.TTSError) {
+			if (error.underlyingError instanceof PersoInteractive.ApiError) {
+				alert(`TTS API Error: ${error.underlyingError}`);
+			} else if (error.underlyingError instanceof PersoInteractive.TTSDecodeError) {
+				alert(`TTS Decode Error: ${error.underlyingError.description}`);
+			}
 		}
 	});
 	unsubscribeChatLog = session.subscribeChatLog((chatLog) => {
 		refreshChatLog(chatLog);
 	});
-	unsubscribeChatStates = session.subscribeChatStates((chatStates) => {
-		applyChatStates(chatStates);
+	unsubscribeChatStates = session.subscribeChatStates((states) => {
+		applyChatStates(states);
 	});
-	// removeSttResultCallback = session.setSttResultCallback((text) => {
-	//     if (text.length > 0) {
-	//         session.processChat(text);
-	//     } else {
-	//         alert('Your voice was not recognized.');
-	//     }
-	// });
 	removeOnClose = session.onClose((manualClosed) => {
 		if (!manualClosed) {
 			setTimeout(() => {
-				PersoInteractive.getSessionInfo(apiServer, session.getSessionId()).then((response) => {
-					alert(response.termination_reason);
-				});
+				PersoInteractive.getSessionInfo(apiServer, session.getSessionId())
+					.then((response) => {
+						if (response.termination_reason) {
+							alert(response.termination_reason);
+						}
+					})
+					.catch((error) => {
+						console.error('Failed to get session info:', error);
+					});
 			}, 500);
 		}
 
@@ -341,27 +605,25 @@ function stopSession() {
 function sendMessage() {
 	var messageElement = document.getElementById('message');
 	var message = messageElement.value.trim();
-	if (message.length > 0) {
-		messageElement.value = '';
-		session.processChat(message);
+	if (!session || message.length === 0) {
+		return;
 	}
+
+	messageElement.value = '';
+	processComplete(message);
 }
 
-function stopSpeech() {
-	if (processing()) {
-		session.clearBuffer();
+function onStopSpeech() {
+	if (processing() && session) {
+		stopSpeech(session);
 	}
 }
 
 function available() {
-	// If 'chatStates' has no ChatState, it is in the Available state
 	return chatStates.size === 0;
 }
 
 function processing() {
-	// It is in a state where a response is being generated (LLM),
-	// being converted into video (ANALYZING),
-	// or the AI human is speaking (SPEAKING).
 	return (
 		chatStates.has(PersoInteractive.ChatState.LLM) ||
 		chatStates.has(PersoInteractive.ChatState.ANALYZING) ||
@@ -376,50 +638,68 @@ function recording() {
 function refreshChatLog(chatList) {
 	var chatLog = document.getElementById('chatLog');
 	chatLog.innerHTML = '';
-	chatList.forEach((chat) => {
-		var li = document.createElement('li');
-		if (chat.isUser) {
-			li.classList = 'message-container user';
-		} else {
-			li.classList = 'message-container other';
-		}
+	[...chatList].reverse().forEach((chat) => {
+		var bubble = document.createElement('div');
+		bubble.className = chat.isUser ? 'chat-bubble user' : 'chat-bubble ai';
 
-		var timeSpan = document.createElement('span');
-		timeSpan.classList = 'timestamp';
-		timeSpan.innerHTML = chat.timestamp;
+		var role = document.createElement('div');
+		role.className = 'chat-role';
+		role.textContent = chat.isUser ? 'You' : 'AI';
 
-		var messageDiv = document.createElement('div');
-		if (chat.isUser) {
-			messageDiv.classList = 'message user-message';
-		} else {
-			messageDiv.classList = 'message other-message';
-		}
-		messageDiv.innerHTML = chat.text;
+		var text = document.createElement('div');
+		text.className = 'chat-text';
+		text.textContent = chat.text;
 
-		li.appendChild(timeSpan);
-		li.appendChild(messageDiv);
+		var time = document.createElement('div');
+		time.className = 'chat-time';
+		time.textContent =
+			chat.timestamp instanceof Date ? chat.timestamp.toLocaleTimeString() : String(chat.timestamp);
 
-		chatLog.appendChild(li);
+		bubble.appendChild(role);
+		bubble.appendChild(text);
+		bubble.appendChild(time);
+		chatLog.appendChild(bubble);
 	});
+	chatLog.scrollTop = chatLog.scrollHeight;
 }
 
 function applySessionState(nextState) {
 	sessionState = nextState;
 
 	var sessionButton = document.getElementById('sessionButton');
+
+	// STT REST UI elements
+	var sttRestButton = document.getElementById('sttRestButton');
+	var sttRestStatus = document.getElementById('sttRestStatus');
+	var sttRestResult = document.getElementById('sttRestResult');
+
+	var featuresArea = document.getElementById('featuresArea');
+
 	switch (nextState) {
 		case 0: {
 			sessionButton.disabled = false;
 			sessionButton.innerText = 'START';
+			// Reset STT REST UI when session stops
+			sttRestButton.disabled = true;
+			sttRestButton.innerText = 'Start STT';
+			sttRestStatus.innerText = '';
+			sttRestStatus.className = 'status';
+			sttRestResult.value = '';
+			featuresArea.classList.add('disabled');
 			break;
 		}
 		case 1: {
 			sessionButton.disabled = true;
+			sessionButton.innerText = 'Loading...';
+			sttRestButton.disabled = true;
 			break;
 		}
 		case 2: {
 			sessionButton.disabled = false;
 			sessionButton.innerText = 'STOP';
+			// Enable STT buttons when session is active
+			sttRestButton.disabled = false;
+			featuresArea.classList.remove('disabled');
 			break;
 		}
 	}
@@ -432,23 +712,25 @@ function applyChatStates(nextChatStates) {
 	const stopSpeechButton = document.getElementById('stopSpeech');
 	const voiceChatButton = document.getElementById('voice');
 	const message = document.getElementById('message');
-	const sendMessage = document.getElementById('sendMessage');
-	const ttfMessage = document.getElementById('ttfMessage');
-	const sendTtfMessage = document.getElementById('sendTtfMessage');
+	const sendMessageBtn = document.getElementById('sendMessage');
+
+	const ttstfMessage = document.getElementById('ttstfMessage');
+	const sendTtstfButton = document.getElementById('sendTtstf');
 
 	if (available()) {
 		message.disabled = false;
-		sendMessage.disabled = false;
-		ttfMessage.disabled = false;
-		sendTtfMessage.disabled = false;
+		sendMessageBtn.disabled = false;
+		ttstfMessage.disabled = false;
+		sendTtstfButton.disabled = false;
 
 		chatStateDesc.innerText = 'Available';
+		chatStateDesc.className = 'state-available';
 		message.focus();
 	} else {
 		message.disabled = true;
-		sendMessage.disabled = true;
-		ttfMessage.disabled = true;
-		sendTtfMessage.disabled = true;
+		sendMessageBtn.disabled = true;
+		ttstfMessage.disabled = true;
+		sendTtstfButton.disabled = true;
 
 		const chatStatesTextArr = [];
 		if (chatStates.has(PersoInteractive.ChatState.RECORDING)) {
@@ -463,21 +745,27 @@ function applyChatStates(nextChatStates) {
 		if (chatStates.has(PersoInteractive.ChatState.SPEAKING)) {
 			chatStatesTextArr.push('AI Speaking');
 		}
+		if (chatStates.has(PersoInteractive.ChatState.TTS)) {
+			chatStatesTextArr.push('TTS');
+		}
 		chatStateDesc.innerText = chatStatesTextArr.join(' / ');
+		chatStateDesc.className = 'state-busy';
 	}
 
-	if (processing()) {
-		stopSpeechButton.disabled = false;
-		voiceChatButton.disabled = true;
-	} else {
-		stopSpeechButton.disabled = true;
-		voiceChatButton.disabled = false;
-	}
+	stopSpeechButton.disabled = !chatStates.has(PersoInteractive.ChatState.SPEAKING);
 
 	if (recording()) {
-		voiceChatButton.innerText = 'Stop';
+		voiceChatButton.disabled = false;
+		voiceChatButton.innerText = 'Stop Speech';
+		voiceChatButton.classList.add('recording');
+	} else if (processing()) {
+		voiceChatButton.disabled = true;
+		voiceChatButton.innerText = 'Voice Chat';
+		voiceChatButton.classList.remove('recording');
 	} else {
-		voiceChatButton.innerText = 'Start';
+		voiceChatButton.disabled = false;
+		voiceChatButton.innerText = 'Voice Chat';
+		voiceChatButton.classList.remove('recording');
 	}
 }
 
@@ -507,8 +795,8 @@ async function loadImage() {
 function redrawChatbotCanvas() {
 	const chatbotCanvas = document.getElementById('chatbotCanvas');
 
-	const width = screenOrientation === 'portrait' ? 304 : 960;
-	const height = 540;
+	const width = screenOrientation === 'portrait' ? 120 : 360;
+	const height = 202;
 
 	chatbotCanvas.style.width = `${width}px`;
 	chatbotCanvas.style.height = `${height}px`;
@@ -516,10 +804,13 @@ function redrawChatbotCanvas() {
 	chatbotCanvas.height = height;
 
 	const ctx = chatbotCanvas.getContext('2d');
+	if (!ctx) {
+		return;
+	}
 
 	ctx.drawImage(background, 0, 0, width, height);
 
-	let persoRatio = perso.width / perso.height;
+	const persoRatio = perso.height === 0 ? 1 : Math.max(perso.width / perso.height, 0.0001);
 	let persoWidth = height * persoRatio;
 	let persoHeight = height;
 	persoWidth = Math.min(persoWidth * (chatbotHeight / 100), width);
@@ -534,15 +825,15 @@ function redrawChatbotCanvas() {
 }
 
 window.onload = async function () {
-	const enableVoiceChatCheckbox = document.getElementById('enableVoiceChat');
-	enableVoiceChatCheckbox.addEventListener('change', (e) => {
-		const voiceChatContainer = document.getElementById('inputMethodContainer2');
-		enableVoiceChat = e.target.checked;
-		if (enableVoiceChat) {
-			voiceChatContainer.style.display = 'flex';
-		} else {
-			voiceChatContainer.style.display = 'none';
-		}
+	const toggleApiKeyBtn = document.getElementById('toggleApiKey');
+	const apiKeyInput = document.getElementById('apiKey');
+	const eyeIcon = document.getElementById('eyeIcon');
+	toggleApiKeyBtn.addEventListener('click', () => {
+		const isPassword = apiKeyInput.type === 'password';
+		apiKeyInput.type = isPassword ? 'text' : 'password';
+		eyeIcon.innerHTML = isPassword
+			? '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/>'
+			: '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>';
 	});
 
 	const screenOrientations = document.getElementsByName('screenOrientation');
@@ -563,7 +854,7 @@ window.onload = async function () {
 	clientToolsContainer.innerHTML = '';
 	clientTools.forEach((value, index) => {
 		const label = document.createElement('label');
-		label.style = 'width: fit-content;';
+		label.style.width = 'fit-content';
 
 		const input = document.createElement('input');
 		input.value = index;
@@ -571,8 +862,7 @@ window.onload = async function () {
 		input.type = 'checkbox';
 
 		label.appendChild(input);
-
-		label.innerHTML += value.name;
+		label.append(` ${value.name}`);
 		clientToolsContainer.appendChild(label);
 	});
 
@@ -628,11 +918,12 @@ window.onload = async function () {
 	await loadImage();
 
 	redrawChatbotCanvas();
+
+	initStfDropZone();
 };
 
 // Loading the default ClientTools.
 function loadChatTools() {
-	// This ClientTool tells you the square of the queried number.
 	const chatTool1 = new PersoInteractive.ChatTool(
 		'get_square_number',
 		'Returns the square of the given number',
@@ -652,8 +943,6 @@ function loadChatTools() {
 		},
 		false
 	);
-	// This ClientTool provides the current weather of the queried city.
-	// This is a sample feature that always provides the same information regardless of the city queried.
 	const chatTool2 = new PersoInteractive.ChatTool(
 		'get_current_weather',
 		'Retrieves the current weather for a given location',
@@ -677,6 +966,7 @@ function loadChatTools() {
 		(arg) => {
 			const location = arg.location;
 			const units = arg.units;
+			console.log(`get_current_weather called for ${location} in ${units}`);
 			return {
 				temperature: '30℃',
 				condition: 'Mostly clear',
@@ -686,8 +976,6 @@ function loadChatTools() {
 		},
 		false
 	);
-	// This ClientTool opens the admin dashboard.
-	// This is a sample feature that logs a message when executed.
 	const chatTool3 = new PersoInteractive.ChatTool(
 		'show_settings',
 		"Use ONLY for direct **COMMANDS** to open settings/admin screen (e.g., 'open settings', 'show admin'). MUST NOT be used for explanations or responses. Return values are machine-only JSON.",
@@ -695,14 +983,12 @@ function loadChatTools() {
 			type: 'object',
 			properties: {}
 		},
-		(arg) => {
+		() => {
 			console.log('show admin page');
 			return { action: 'show_settings', success: true };
 		},
 		true
 	);
-	// This ClientTool opens a map.
-	// This is a sample that triggers an error when executed.
 	const chatTool4 = new PersoInteractive.ChatTool(
 		'show_map',
 		"Use ONLY for direct **COMMANDS** to open map (e.g., 'open map', 'show map'). MUST NOT be used for explanations or responses. Return values are machine-only JSON.",
@@ -710,7 +996,7 @@ function loadChatTools() {
 			type: 'object',
 			properties: {}
 		},
-		(arg) => {
+		() => {
 			console.log('show map');
 			throw new Error('client tool4 error test');
 		},
@@ -726,4 +1012,7 @@ window.onSessionClicked = onSessionClicked;
 window.onSendMessageClicked = onSendMessageClicked;
 window.onMessageKeyPress = onMessageKeyPress;
 window.onVoiceChatClicked = onVoiceChatClicked;
-window.onTtstfMessageSubmit = onTtstfMessageSubmit;
+window.onSttRestButtonClicked = onSttRestButtonClicked;
+window.onTtsMessageSubmit = onTtsMessageSubmit;
+window.onTtstfSendClicked = onTtstfSendClicked;
+window.onTtstfKeyPress = onTtstfKeyPress;

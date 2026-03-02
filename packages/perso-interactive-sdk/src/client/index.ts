@@ -17,7 +17,6 @@
  *   sessionId,
  *   width,
  *   height,
- *   enableVoiceChat,
  *   clientTools
  * );
  *
@@ -28,30 +27,46 @@
 
 // Session management
 export {
-  getLLMs,
-  getTTSs,
-  getSTTs,
-  getModelStyles,
-  getBackgroundImages,
-  getPrompts,
-  getDocuments,
-  getMcpServers,
-  getAllSettings,
-  createSession,
-  getSessionInfo,
-  // Session
-  ChatTool,
-  ChatState,
-  Session,
-  type Chat,
-} from "./PersoInteractive";
+	getLLMs,
+	getTTSs,
+	getSTTs,
+	getModelStyles,
+	getBackgroundImages,
+	getPrompts,
+	getDocuments,
+	getMcpServers,
+	getAllSettings,
+	createSession,
+	getSessionInfo,
+	// Session
+	ChatTool,
+	ChatState,
+	Session,
+	type Chat,
+	type LLMStreamChunk,
+	type ProcessLLMOptions,
+	// LLM processing
+	LlmProcessor,
+	type LlmProcessorCallbacks,
+	type LlmProcessorConfig,
+	// Audio recording
+	WavRecorder,
+	createWavRecorder,
+	type WavRecorderOptions
+} from './PersoInteractive';
 
 // Client-side session creation (exposes API key - use with caution)
-export { createSessionId } from "./init";
+export { createSessionId } from './init';
 
 // Error types
 export {
-  ApiError,
-  LLMError,
-  LLMStreamingResponseError,
-} from "../shared";
+	ApiError,
+	LLMError,
+	LLMStreamingResponseError,
+	STTError,
+	TTSError,
+	TTSDecodeError
+} from '../shared';
+
+// Audio utilities
+export { getWavSampleRate, TTS_TARGET_SAMPLE_RATE } from '../shared';

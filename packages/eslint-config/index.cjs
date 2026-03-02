@@ -39,11 +39,16 @@ module.exports = {
 				parser: {
 					ts: '@typescript-eslint/parser'
 				},
-				project: ['./tsconfig.json'],
-				tsconfigRootDir: process.cwd(),
-				extraFileExtensions: ['.svelte']
+				extraFileExtensions: ['.svelte'],
+				project: null
 			},
 			rules: {
+				// Disable type-aware rules for svelte files (TypeScript can't process .svelte)
+				'@typescript-eslint/no-unsafe-assignment': 'off',
+				'@typescript-eslint/no-unsafe-member-access': 'off',
+				'@typescript-eslint/no-unsafe-call': 'off',
+				'@typescript-eslint/no-unsafe-return': 'off',
+				'@typescript-eslint/no-unsafe-argument': 'off',
 				// Allow Svelte component scripts to use unused exports (commonly used for props).
 				'@typescript-eslint/no-unused-vars': [
 					'warn',
@@ -67,6 +72,15 @@ module.exports = {
 	rules: {
 		'@typescript-eslint/consistent-type-imports': 'warn',
 		'@typescript-eslint/no-explicit-any': 'off',
-		'@typescript-eslint/no-namespace': 'off'
+		'@typescript-eslint/no-namespace': 'off',
+		'@typescript-eslint/no-unused-vars': [
+			'warn',
+			{
+				vars: 'all',
+				args: 'after-used',
+				argsIgnorePattern: '^_',
+				ignoreRestSiblings: true
+			}
+		]
 	}
 };

@@ -7,10 +7,12 @@
 		"dev": "vite",
 		"build": "vite build",
 		"preview": "vite preview",
+		"check": "echo 'No type checking needed for vanilla app'",
 		"lint": "prettier --config ./prettier.config.cjs --check .",
 		"format": "prettier --config ./prettier.config.cjs --write ."
 	},
 	"dependencies": {
+		"@perso-interactive-sdk-web/design-system": "workspace:*",
 		"perso-interactive-sdk-web": "workspace:*"
 	},
 	"devDependencies": {

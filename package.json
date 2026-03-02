@@ -1,24 +1,34 @@
 {
-  "name": "perso-interactive-sdk-web",
-  "version": "0.0.0",
-  "private": true,
-  "packageManager": "pnpm@10.11.0",
-  "scripts": {
-    "build": "pnpm -r --filter ./packages/perso-interactive-sdk build",
-    "svelte": "pnpm --filter @perso-interactive-sdk-web/app-svelte dev",
-    "vanilla": "pnpm --filter @perso-interactive-sdk-web/app-vanilla dev",
-    "typescript": "pnpm --filter @perso-interactive-sdk-web/app-typescript dev",
-    "lint:svelte": "pnpm --filter @perso-interactive-sdk-web/app-svelte lint",
-    "lint:vanilla": "pnpm --filter @perso-interactive-sdk-web/app-vanilla lint",
-    "lint:typescript": "pnpm --filter @perso-interactive-sdk-web/app-typescript lint",
-    "format:svelte": "pnpm --filter @perso-interactive-sdk-web/app-svelte format",
-    "format:vanilla": "pnpm --filter @perso-interactive-sdk-web/app-vanilla format",
-    "format:typescript": "pnpm --filter @perso-interactive-sdk-web/app-typescript format",
-    "tsc:svelte": "pnpm --filter @perso-interactive-sdk-web/app-svelte check:watch",
-    "tsc:vanilla": "pnpm --filter @perso-interactive-sdk-web/app-vanilla check:watch",
-    "tsc:typescript": "pnpm --filter @perso-interactive-sdk-web/app-typescript check:watch",
-    "tsc": "pnpm --filter @perso-interactive-sdk-web/app-svelte check && pnpm --filter @perso-interactive-sdk-web/app-vanilla check && pnpm --filter @perso-interactive-sdk-web/app-typescript check",
-    "test": "pnpm --filter perso-interactive-sdk-web test",
-    "test:watch": "pnpm --filter perso-interactive-sdk-web test:watch"
-  }
+	"name": "perso-interactive-sdk-web",
+	"version": "0.0.0",
+	"private": true,
+	"packageManager": "pnpm@10.11.0",
+	"scripts": {
+		"build:sdk": "pnpm -r --filter ./packages/perso-interactive-sdk build",
+		"build:apps": "pnpm build:sdk && pnpm -r --filter './apps/*' build",
+		"build:sdk-tester": "pnpm --filter @perso-interactive-sdk-web/app-sdk-tester build",
+		"svelte": "pnpm --filter @perso-interactive-sdk-web/app-svelte dev",
+		"vanilla": "pnpm --filter @perso-interactive-sdk-web/app-vanilla dev",
+		"typescript": "pnpm --filter @perso-interactive-sdk-web/app-typescript dev",
+		"sdk-tester": "pnpm --filter @perso-interactive-sdk-web/app-sdk-tester dev",
+		"lint": "pnpm lint:svelte && pnpm lint:vanilla && pnpm lint:typescript && pnpm lint:sdk-tester",
+		"lint:svelte": "pnpm --filter @perso-interactive-sdk-web/app-svelte lint",
+		"lint:vanilla": "pnpm --filter @perso-interactive-sdk-web/app-vanilla lint",
+		"lint:typescript": "pnpm --filter @perso-interactive-sdk-web/app-typescript lint",
+		"lint:sdk-tester": "pnpm --filter @perso-interactive-sdk-web/app-sdk-tester lint",
+		"format:svelte": "pnpm --filter @perso-interactive-sdk-web/app-svelte format",
+		"format:vanilla": "pnpm --filter @perso-interactive-sdk-web/app-vanilla format",
+		"format:typescript": "pnpm --filter @perso-interactive-sdk-web/app-typescript format",
+		"format:sdk-tester": "pnpm --filter @perso-interactive-sdk-web/app-sdk-tester format",
+		"tsc:svelte": "pnpm --filter @perso-interactive-sdk-web/app-svelte check:watch",
+		"tsc:vanilla": "pnpm --filter @perso-interactive-sdk-web/app-vanilla check:watch",
+		"tsc:typescript": "pnpm --filter @perso-interactive-sdk-web/app-typescript check:watch",
+		"tsc:sdk-tester": "pnpm --filter @perso-interactive-sdk-web/app-sdk-tester check:watch",
+		"tsc": "pnpm --filter @perso-interactive-sdk-web/app-svelte check && pnpm --filter @perso-interactive-sdk-web/app-vanilla check && pnpm --filter @perso-interactive-sdk-web/app-typescript check && pnpm --filter @perso-interactive-sdk-web/app-sdk-tester check",
+		"test": "pnpm --filter perso-interactive-sdk-web test",
+		"test:watch": "pnpm --filter perso-interactive-sdk-web test:watch"
+	},
+	"devDependencies": {
+		"prettier-plugin-svelte": "^3.4.0"
+	}
 }

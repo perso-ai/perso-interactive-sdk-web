@@ -1,21 +1,34 @@
-import { PersoUtil } from "../shared";
+import { PersoUtil } from '../shared';
 import {
-  type Chat,
-  ChatState,
-  ChatTool,
-  createSession as cs,
-  Session,
-} from "./session";
+	type Chat,
+	ChatState,
+	ChatTool,
+	type LLMStreamChunk,
+	type ProcessLLMOptions
+} from './types';
+import { createSession as cs, Session } from './session';
+import {
+	LlmProcessor,
+	type LlmProcessorCallbacks,
+	type LlmProcessorConfig
+} from './llm';
+import { WavRecorder, createWavRecorder, type WavRecorderOptions } from './wav-recorder';
 
-/**
- * Re-export session helpers and error types so SDK consumers can import from a
- * single entry point.
- */
 export {
-  ChatState,
-  ChatTool,
-  type Chat,
-  Session,
+	ChatState,
+	ChatTool,
+	type Chat,
+	type LLMStreamChunk,
+	type ProcessLLMOptions,
+	Session,
+	// LLM processing
+	LlmProcessor,
+	type LlmProcessorCallbacks,
+	type LlmProcessorConfig,
+	// Audio recording
+	WavRecorder,
+	createWavRecorder,
+	type WavRecorderOptions
 };
 
 /**
@@ -25,7 +38,7 @@ export {
  * @returns Promise resolving with LLM metadata.
  */
 export async function getLLMs(apiServer: string, apiKey: string) {
-  return await PersoUtil.getLLMs(apiServer, apiKey);
+	return await PersoUtil.getLLMs(apiServer, apiKey);
 }
 
 /**
@@ -34,7 +47,7 @@ export async function getLLMs(apiServer: string, apiKey: string) {
  * @param apiKey API key used for authentication.
  */
 export async function getTTSs(apiServer: string, apiKey: string) {
-  return await PersoUtil.getTTSs(apiServer, apiKey);
+	return await PersoUtil.getTTSs(apiServer, apiKey);
 }
 
 /**
@@ -43,7 +56,7 @@ export async function getTTSs(apiServer: string, apiKey: string) {
  * @param apiKey API key used for authentication.
  */
 export async function getSTTs(apiServer: string, apiKey: string) {
-  return await PersoUtil.getSTTs(apiServer, apiKey);
+	return await PersoUtil.getSTTs(apiServer, apiKey);
 }
 
 /**
@@ -52,7 +65,7 @@ export async function getSTTs(apiServer: string, apiKey: string) {
  * @param apiKey API key used for authentication.
  */
 export async function getModelStyles(apiServer: string, apiKey: string) {
-  return await PersoUtil.getModelStyles(apiServer, apiKey);
+	return await PersoUtil.getModelStyles(apiServer, apiKey);
 }
 
 /**
@@ -61,7 +74,7 @@ export async function getModelStyles(apiServer: string, apiKey: string) {
  * @param apiKey API key used for authentication.
  */
 export async function getBackgroundImages(apiServer: string, apiKey: string) {
-  return await PersoUtil.getBackgroundImages(apiServer, apiKey);
+	return await PersoUtil.getBackgroundImages(apiServer, apiKey);
 }
 
 /**
@@ -70,7 +83,7 @@ export async function getBackgroundImages(apiServer: string, apiKey: string) {
  * @param apiKey API key used for authentication.
  */
 export async function getPrompts(apiServer: string, apiKey: string) {
-  return await PersoUtil.getPrompts(apiServer, apiKey);
+	return await PersoUtil.getPrompts(apiServer, apiKey);
 }
 
 /**
@@ -79,7 +92,7 @@ export async function getPrompts(apiServer: string, apiKey: string) {
  * @param apiKey API key used for authentication.
  */
 export async function getDocuments(apiServer: string, apiKey: string) {
-  return await PersoUtil.getDocuments(apiServer, apiKey);
+	return await PersoUtil.getDocuments(apiServer, apiKey);
 }
 
 /**
@@ -88,7 +101,7 @@ export async function getDocuments(apiServer: string, apiKey: string) {
  * @param apiKey API key used for authentication.
  */
 export async function getMcpServers(apiServer: string, apiKey: string) {
-  return await PersoUtil.getMcpServers(apiServer, apiKey);
+	return await PersoUtil.getMcpServers(apiServer, apiKey);
 }
 
 /**
@@ -99,54 +112,62 @@ export async function getMcpServers(apiServer: string, apiKey: string) {
  * @returns Object containing arrays for LLMs, TTS/STT types, model styles, etc.
  */
 export async function getAllSettings(apiServer: string, apiKey: string) {
-  const llms = await getLLMs(apiServer, apiKey);
-  const modelStyles = await getModelStyles(apiServer, apiKey);
-  const backgroundImages = await getBackgroundImages(apiServer, apiKey);
-  const ttsTypes = await getTTSs(apiServer, apiKey);
-  const sttTypes = await getSTTs(apiServer, apiKey);
-  const prompts = await getPrompts(apiServer, apiKey);
-  const documents = await getDocuments(apiServer, apiKey);
-  const mcpServers = await getMcpServers(apiServer, apiKey);
+	const llms = await getLLMs(apiServer, apiKey);
+	const modelStyles = await getModelStyles(apiServer, apiKey);
+	const backgroundImages = await getBackgroundImages(apiServer, apiKey);
+	const ttsTypes = await getTTSs(apiServer, apiKey);
+	const sttTypes = await getSTTs(apiServer, apiKey);
+	const prompts = await getPrompts(apiServer, apiKey);
+	const documents = await getDocuments(apiServer, apiKey);
+	const mcpServers = await getMcpServers(apiServer, apiKey);
 
-  return {
-    llms,
-    ttsTypes,
-    sttTypes,
-    modelStyles,
-    backgroundImages,
-    prompts,
-    documents,
-    mcpServers,
-  };
+	return {
+		llms,
+		ttsTypes,
+		sttTypes,
+		modelStyles,
+		backgroundImages,
+		prompts,
+		documents,
+		mcpServers
+	};
 }
 
 /**
- * Wraps the lower-level `session.createSession` helper so callers can import
- * from this module.
- * @param apiServer Perso API server URL.
- * @param sessionId Session id to attach to.
- * @param width Avatar canvas width.
- * @param height Avatar canvas height.
- * @param enableVoiceChat Whether microphone capture should be enabled.
- * @param clientTools Client-side tools available for function calling.
- * @returns Initialized Session.
+ * Creates a Session with REST-based STT/TTS (current mode).
  */
+export function createSession(
+	apiServer: string,
+	sessionId: string,
+	width: number,
+	height: number,
+	clientTools: Array<ChatTool>
+): Promise<Session>;
+/**
+ * Creates a Session with bidirectional WebRTC audio (legacy mode).
+ * @deprecated Legacy voice chat mode will be removed in a future version.
+ *   Use the 5-argument overload with REST-based STT/TTS instead.
+ */
+export function createSession(
+	apiServer: string,
+	sessionId: string,
+	width: number,
+	height: number,
+	enableVoiceChat: boolean,
+	clientTools: Array<ChatTool>
+): Promise<Session>;
 export async function createSession(
-  apiServer: string,
-  sessionId: string,
-  width: number,
-  height: number,
-  enableVoiceChat: boolean,
-  clientTools: Array<ChatTool>
-) {
-  return await cs(
-    apiServer,
-    sessionId,
-    width,
-    height,
-    enableVoiceChat,
-    clientTools
-  );
+	apiServer: string,
+	sessionId: string,
+	width: number,
+	height: number,
+	enableVoiceChatOrClientTools: boolean | Array<ChatTool>,
+	clientTools?: Array<ChatTool>
+): Promise<Session> {
+	if (typeof enableVoiceChatOrClientTools === 'boolean') {
+		return await cs(apiServer, sessionId, width, height, enableVoiceChatOrClientTools, clientTools ?? []);
+	}
+	return await cs(apiServer, sessionId, width, height, enableVoiceChatOrClientTools);
 }
 
 /**
@@ -155,5 +176,5 @@ export async function createSession(
  * @param sessionId Session id to inspect.
  */
 export async function getSessionInfo(apiServer: string, sessionId: string) {
-  return await PersoUtil.getSessionInfo(apiServer, sessionId);
+	return await PersoUtil.getSessionInfo(apiServer, sessionId);
 }

@@ -1,0 +1,11 @@
+{
+	"name": "@perso-interactive-sdk-web/design-system",
+	"description": "Shared design system styles for Perso Interactive demo apps",
+	"version": "1.0.0",
+	"private": true,
+	"exports": {
+		"./styles/base.css": "./styles/base.css",
+		"./styles/components.css": "./styles/components.css",
+		"./styles/chat.css": "./styles/chat.css"
+	}
+}

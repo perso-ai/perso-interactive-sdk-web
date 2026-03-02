@@ -1,0 +1,243 @@
+/* App-specific styles — shared styles imported from design-system */
+
+/* Dark theme with background image */
+
+body {
+	background: #1a1025 url('/background.png') no-repeat center center fixed;
+	background-size: cover;
+	color: #e0e0e0;
+}
+
+h1 {
+	color: #fff;
+}
+
+h2 {
+	color: #e0e0e0;
+}
+
+/* Cards & panels — solid dark */
+
+.section {
+	background: #1e1535;
+	border-color: #3a3055;
+}
+
+/* Form elements — dark solid */
+
+.field label {
+	color: #ddd;
+}
+
+input[type='text'],
+input[type='password'],
+select {
+	background-color: #150e28;
+	border-color: #3a3055;
+	color: #f0f0f0;
+}
+
+input[type='text']::placeholder {
+	color: #6b5f80;
+}
+
+input[type='text']:focus,
+input[type='password']:focus,
+select:focus {
+	border-color: var(--color-primary);
+	box-shadow: 0 0 0 2px rgba(100, 74, 255, 0.3);
+	background-color: #1a1230;
+}
+
+select {
+	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23bbb' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+	background-color: #150e28;
+}
+
+select option {
+	background: #1e1535;
+	color: #f0f0f0;
+}
+
+input[type='file'] {
+	background-color: #150e28;
+	border-color: #3a3055;
+	color: #ddd;
+}
+
+button {
+	background: #2a2045;
+	border-color: #3a3055;
+	color: #eee;
+}
+
+button:hover:not(:disabled) {
+	background: #352a55;
+}
+
+/* Video */
+
+video {
+	border-color: #3a3055;
+	background: #0a0618;
+}
+
+/* Chat */
+
+.chat-log {
+	background: #120c22;
+	border-color: #3a3055;
+	scrollbar-width: thin;
+	scrollbar-color: #3a3055 transparent;
+}
+
+.chat-log::-webkit-scrollbar {
+	width: 6px;
+}
+
+.chat-log::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+.chat-log::-webkit-scrollbar-thumb {
+	background: #3a3055;
+	border-radius: 3px;
+}
+
+.chat-log::-webkit-scrollbar-thumb:hover {
+	background: #4f4280;
+}
+
+.chat-bubble.ai {
+	background: var(--color-primary);
+	border-color: var(--color-primary-hover);
+	color: #fff;
+}
+
+.chat-bubble.ai .chat-role {
+	color: #c8bfff;
+}
+
+.chat-bubble.ai .chat-time {
+	color: #a99cff;
+}
+
+.chat-bubble.user {
+	background: #fff;
+	border-color: #e0e0e0;
+	color: #222;
+}
+
+.chat-bubble.user .chat-role {
+	color: #666;
+}
+
+.chat-bubble.user .chat-time {
+	color: #999;
+}
+
+.chat-role {
+	color: #b0a5c5;
+}
+
+.chat-time {
+	color: #6b5f80;
+}
+
+/* Status */
+
+.status {
+	color: #b0a5c5;
+}
+
+/* Audio */
+
+audio {
+	filter: invert(1) hue-rotate(180deg);
+}
+
+/* Layout overrides */
+
+.avatar-row {
+	margin-top: 16px;
+}
+
+.section-hint {
+	font-size: 12px;
+	font-weight: 400;
+	color: #6b5f80;
+}
+
+.state-panel .section-hint {
+	margin-top: 12px;
+}
+
+.btn-primary {
+	min-height: 44px;
+}
+
+.avatar-buttons {
+	flex-wrap: nowrap;
+}
+
+.avatar-buttons button {
+	flex: 1;
+}
+
+#voice {
+	background: var(--color-primary);
+	color: #fff;
+	border: none;
+}
+
+#voice:hover:not(:disabled):not(.recording) {
+	background: var(--color-primary-hover);
+}
+
+#voice:disabled {
+	background: var(--color-primary-disabled);
+}
+
+#voice.recording {
+	background: var(--color-primary-light);
+	color: var(--color-primary);
+}
+
+.avatar-right .section .field button {
+	flex-shrink: 0;
+	min-width: 100px;
+	width: 100px;
+}
+
+.avatar-right .section .field input[type='file'] {
+	flex: 1;
+	min-width: 0;
+	width: 100%;
+}
+
+#chatStateDescription {
+	font-weight: 600;
+}
+
+#chatStateDescription.state-available {
+	color: #22c55e;
+}
+
+#chatStateDescription.state-busy {
+	color: #f59e0b;
+}
+
+/* Disabled states — solid colors instead of opacity */
+
+button:disabled {
+	opacity: 1;
+	background: #1e1535;
+	border-color: #2a2045;
+	color: #4a4060;
+	cursor: not-allowed;
+}
+
+.empty-hint {
+	font-size: 13px;
+	color: #6b5f80;
+}

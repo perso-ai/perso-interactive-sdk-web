@@ -7,7 +7,6 @@
 	$: {
 		trimmedMessage = message.trim();
 	}
-	let messageInput: HTMLInputElement;
 	let sendButton: HTMLButtonElement;
 
 	function messageSubmit() {
@@ -16,11 +15,10 @@
 	}
 </script>
 
-<div class="input-method-container">
+<div class="row chat-input-row">
 	<input
-		bind:this={messageInput}
 		type="text"
-		style="width: 863px; height: 72px; font-size: 24px; padding-inline: 10px; margin-left: 12px;"
+		placeholder="Type a message..."
 		on:keypress={(keyEvent) => {
 			if (keyEvent.key === 'Enter' && !sendButton.disabled) {
 				messageSubmit();
@@ -30,7 +28,7 @@
 	/>
 	<button
 		bind:this={sendButton}
-		style="width: 133px; height: 72px; font-size: 24px; line-height: 28px; margin-left: 12px;"
+		class="btn-sm"
 		on:click={() => messageSubmit()}
 		disabled={!enableSendButton || trimmedMessage.length === 0}
 	>

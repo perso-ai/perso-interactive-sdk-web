@@ -7,12 +7,12 @@ export default defineConfig({
 	publicDir: path.resolve(__dirname, 'public'),
 	plugins: [
 		{
-			name: 'static-index-js',
+			name: 'vanilla-index-js',
 			apply: 'build',
 			enforce: 'pre',
 			transformIndexHtml(html) {
 				return {
-					html: html.replace(/<script[^>]*src=['"]\/index\.js['"][^>]*><\/script>/, ''),
+					html: html.replace(/<script[^>]*src=['"]\/?index\.js['"][^>]*><\/script>/, ''),
 					tags: [
 						{
 							tag: 'script',
@@ -23,16 +23,40 @@ export default defineConfig({
 				};
 			},
 			generateBundle() {
-				this.emitFile({
-					type: 'asset',
-					fileName: 'index.js',
-					source: fs.readFileSync(path.resolve(__dirname, 'src/index.js'), 'utf-8')
-				});
+				const iifeJsPath = path.resolve(__dirname, 'src/iife.js');
+				if (fs.existsSync(iifeJsPath)) {
+					this.emitFile({
+						type: 'asset',
+						fileName: 'iife.js',
+						source: fs.readFileSync(iifeJsPath, 'utf-8')
+					});
+				}
+
+				const iifeHtmlPath = path.resolve(__dirname, 'src/iife.html');
+				if (fs.existsSync(iifeHtmlPath)) {
+					let iifeHtml = fs.readFileSync(iifeHtmlPath, 'utf-8');
+					iifeHtml = iifeHtml.replace('src="/iife.js"', 'src="./iife.js"');
+					this.emitFile({
+						type: 'asset',
+						fileName: 'iife.html',
+						source: iifeHtml
+					});
+				}
 			}
 		}
 	],
 	build: {
 		outDir: '../dist',
-		emptyOutDir: true
+		emptyOutDir: true,
+		rollupOptions: {
+			input: {
+				main: path.resolve(__dirname, 'src/index.html'),
+				index: path.resolve(__dirname, 'src/index.js')
+			},
+			output: {
+				entryFileNames: '[name].js',
+				assetFileNames: '[name].[ext]'
+			}
+		}
 	}
 });

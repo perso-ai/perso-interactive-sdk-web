@@ -1,79 +1,23 @@
 <script lang="ts">
 	import type { Chat } from 'perso-interactive-sdk-web/client';
+
 	export let chatLog: Array<Chat>;
+
+	function formatTime(date: Date): string {
+		const d = date instanceof Date ? date : new Date(date);
+		return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+	}
 </script>
 
-<ul class="chat-log">
+<div class="chat-log">
 	{#each chatLog as message}
-		<li class="message-container {message.isUser ? 'user' : 'other'}">
-			<span class="timestamp">
-				{message.timestamp}
-			</span>
-			<div class="message {message.isUser ? 'user-message' : 'other-message'}">
-				{message.text}
-			</div>
-		</li>
+		<div class="chat-bubble {message.isUser ? 'user' : 'ai'}">
+			<span class="chat-role">{message.isUser ? 'You' : 'AI'}</span>
+			<div class="chat-text">{message.text}</div>
+			<span class="chat-time">{formatTime(message.timestamp)}</span>
+		</div>
 	{/each}
-</ul>
-
-<style>
-	.message-container {
-		display: flex;
-		flex-direction: column;
-	}
-	.message-container.user {
-		margin-left: auto;
-		align-items: flex-end;
-	}
-	.message-container.other {
-		margin-right: auto;
-		align-items: flex-start;
-	}
-	.message {
-		padding: 18px 20px;
-		border-radius: 20px;
-		max-width: 315px;
-		box-sizing: border-box;
-		margin: 0px 0px 10px 0px;
-	}
-	.user-message {
-		margin-left: auto;
-		background-color: white;
-		color: black;
-		font-size: 16px;
-		letter-spacing: -0.01em;
-		line-height: 150%;
-		overflow-wrap: break-word;
-	}
-	.other-message {
-		background-color: #343434;
-		color: white;
-		font-size: 16px;
-		letter-spacing: -0.01em;
-		line-height: 150%;
-		overflow-wrap: break-word;
-	}
-	.timestamp {
-		display: block;
-		margin: 8px 12px;
-		font-size: 12px;
-		color: black;
-		text-align: right;
-	}
-	ul.chat-log {
-		display: flex;
-		flex-direction: column-reverse;
-		overflow-y: auto;
-		flex-grow: 1;
-		padding-inline: 10px;
-		width: 400px;
-		height: 540px;
-		max-width: 400px;
-		border: 1px;
-		border-color: black;
-		border-style: solid;
-		margin: 0px;
-		background-color: #999999;
-		list-style: none;
-	}
-</style>
+	{#if chatLog.length === 0}
+		<p class="empty-hint">No messages yet</p>
+	{/if}
+</div>

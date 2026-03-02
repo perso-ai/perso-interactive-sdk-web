@@ -221,6 +221,8 @@ function getAllSettings(apiServer: string, apiKey: string): Promise<any>;
 
 ### Create session id
 
+> **Server-side only**: This function requires your API key. Always call it from your server to keep the key secret. Pass only the returned `sessionId` to the browser.
+
 ```typescript
 function createSessionId(
   apiServer: string,
@@ -238,8 +240,6 @@ function createSessionId(
     llm_type?: string;
     tts_type?: string;
     stt_type?: string;
-    text_normalization_config?: string | null;
-    text_normalization_locale?: string | null;
   }
 ): Promise<string>;
 ```
@@ -260,12 +260,121 @@ function createSessionId(
 | `params.padding_left` | No | AI human horizontal position (A number between -1.0 and 1.0, default 0.0) |
 | `params.padding_top` | No | AI human vertical position (A number between 0.0 and 1.0, default 0.0) |
 | `params.padding_height` | No | The scale of AI human height; the width of the AI human cannot exceed the width of the background (A number between 0.0 and 5.0, default 1.0) |
-| `params.text_normalization_config` | No | Configuration for TTS text normalization |
-| `params.text_normalization_locale` | No | Locale setting for TTS text normalization |
 
 **Returns:** Session ID (string)
 
+#### Express.js Example
+
+This example uses [Express](https://www.npmjs.com/package/express). Install the required packages:
+
+```bash
+# npm
+npm install express perso-interactive-sdk-web
+
+# yarn
+yarn add express perso-interactive-sdk-web
+
+# pnpm
+pnpm add express perso-interactive-sdk-web
+```
+
+```javascript
+// server.js
+const express = require("express");
+const { createSessionId } = require("perso-interactive-sdk-web/server");
+
+const app = express();
+
+const API_SERVER = "https://live-api.perso.ai";
+const API_KEY = process.env.PERSO_INTERACTIVE_API_KEY;
+
+app.post("/api/session", async (req, res) => {
+  try {
+    const sessionId = await createSessionId(API_SERVER, API_KEY, {
+      using_stf_webrtc: true,
+      model_style: "<model_style_name>",
+      prompt: "<prompt_id>",
+      llm_type: "<llm_name>",
+      tts_type: "<tts_name>",
+      stt_type: "<stt_name>",
+    });
+    res.json({ sessionId });
+  } catch (error) {
+    console.error("Session creation failed:", error);
+    res.status(500).json({ error: "Failed to create session" });
+  }
+});
+
+app.listen(3000, () => console.log("Server running on port 3000"));
+```
+
+#### Client-side Testing Only
+
+> ⚠️ **Warning**: The following example exposes your API key in the browser. Use this **only for local testing**. Never deploy this to production. If your API key is compromised due to client-side usage, the SDK provider assumes no responsibility.
+
+```typescript
+import {
+  createSessionId,
+  createSession,
+} from "perso-interactive-sdk-web/client";
+
+const apiServer = "https://live-api.perso.ai";
+const apiKey = "YOUR_API_KEY"; // ⚠️ NEVER commit or expose this in production
+
+const sessionId = await createSessionId(apiServer, apiKey, {
+  using_stf_webrtc: true,
+  model_style: "<model_style_name>",
+  prompt: "<prompt_id>",
+  llm_type: "<llm_name>",
+  tts_type: "<tts_name>",
+  stt_type: "<stt_name>",
+});
+
+const session = await createSession(apiServer, sessionId, 1920, 1080, []);
+session.setSrc(document.getElementById("video"));
+```
+
+### Get intro message
+
+> **Server-side only**: This function requires your API key.
+
+```typescript
+function getIntroMessage(
+  apiServer: string,
+  apiKey: string,
+  promptId: string
+): Promise<string>;
+```
+
+| Parameter   | Required | Description                              |
+|-------------|----------|------------------------------------------|
+| `apiServer` | Yes      | API Server URL                           |
+| `apiKey`    | Yes      | API Key                                  |
+| `promptId`  | Yes      | The prompt ID to fetch intro message for |
+
+**Returns:** The intro message string for the given prompt.
+
+**Throws:**
+- `Error` with `cause: 404` if the prompt is not found
+- `Error` with the API error detail if an `ApiError` occurs
+
+```typescript
+import { getIntroMessage } from "perso-interactive-sdk-web/server";
+
+const intro = await getIntroMessage(apiServer, apiKey, "<prompt_id>");
+```
+
+### PersoUtilServer
+
+> **Server-side only**: Available from `perso-interactive-sdk-web/server`.
+
+Server-side alias for the internal `PersoUtil` class. Exposes low-level static methods
+for direct API calls (e.g., `getLLMs`, `getPrompts`, `getModelStyles`).
+Most users should prefer the top-level convenience functions instead.
+
 ### Create session
+
+The `sessionId` parameter should be obtained from your server endpoint (see [Create session id](#create-session-id) above).
 
 ```typescript
 function createSession(
@@ -273,19 +382,17 @@ function createSession(
   sessionId: string,
   width: number,
   height: number,
-  enableVoiceChat: boolean,
   clientTools: Array<ChatTool>
 ): Promise<Session>;
 ```
 
-| Parameter | Description |
-|-----------|-------------|
-| `apiServer` | API Server URL |
-| `sessionId` | Session ID |
-| `width` | AI human video width |
-| `height` | AI human video height |
-| `enableVoiceChat` | Whether 'Voice chat' is used |
-| `clientTools` | Client tools to be registered with the LLM |
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `apiServer` | Yes | API Server URL |
+| `sessionId` | Yes | Session ID obtained from your server |
+| `width` | Yes | AI human video width |
+| `height` | Yes | AI human video height |
+| `clientTools` | Yes | Client tools to be registered with the LLM |
 
 **Returns:** Session object
 
@@ -366,11 +473,125 @@ ChatState.LLM is set in the 'Chat states'.
 While the AI human is preparing a response, ChatState.ANALYZING is set in 'Chat states'.  
 When speaking begins, ChatState.SPEAKING is set in 'Chat states'.
 
+### Stream LLM responses with full control (Advanced)
+
 ```typescript
+function processLLM(options: ProcessLLMOptions): AsyncGenerator<LLMStreamChunk>;
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `options` | Configuration object containing message, optional tools, and abort signal |
+
+**Returns:** `AsyncGenerator<LLMStreamChunk>` - An async generator that yields streaming chunks
+
+This method provides fine-grained control over LLM streaming responses. Unlike `processChat()`, it:
+- Does NOT automatically trigger TTS/avatar speech
+- Does NOT automatically update chat logs
+- Does NOT manage chat states
+- Gives you full control over the streaming response
+
+**Use cases:**
+- Custom UI rendering of streaming text
+- Intercepting and modifying LLM responses
+- Building custom chat interfaces
+- Integration with external systems
+
+**Example usage:**
+
+```typescript
+const controller = new AbortController();
+
+for await (const chunk of session.processLLM({
+  message: "Hello, how are you?",
+  signal: controller.signal
+})) {
+  if (chunk.type === 'message') {
+    console.log('Streaming:', chunk.message);
+    if (chunk.finish) {
+      console.log('Complete response:', chunk.message);
+      // Optionally trigger avatar speech
+      session.processTTSTF(chunk.message);
+    }
+  } else if (chunk.type === 'tool_call') {
+    console.log('Tool called:', chunk.tool_calls);
+  } else if (chunk.type === 'tool_result') {
+    console.log('Tool result:', chunk.result);
+  } else if (chunk.type === 'error') {
+    console.error('Error:', chunk.error);
+  }
+}
+```
+
+**Cancellation:**
+
+```typescript
+// Cancel the stream
+controller.abort();
+
+// Or break from the loop
+for await (const chunk of session.processLLM({ message: "..." })) {
+  if (someCondition) break; // Cleanly exits the generator
+}
+```
+
+### Get message history
+
+```typescript
+function getMessageHistory(): ReadonlyArray<object>;
+```
+
+**Returns:** Read-only array of message history objects
+
+Returns the conversation history used by the LLM. Each entry contains `role`, `type`, and `content` fields.
+
+**Example usage:**
+
+```typescript
+const history = session.getMessageHistory();
+console.log('Conversation has', history.length, 'messages');
+```
+
+### Transcribe audio to text
+
+```typescript
+function transcribeAudio(audio: Blob | File, language?: string): Promise<string>;
+```
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `audio` | Yes | Audio data as Blob or File |
+| `language` | No | Language code for STT (e.g., 'ko', 'en') |
+
+**Returns:** Promise resolving to transcribed text
+
+**Throws:** `STTError` if the API call fails
+
+Converts audio to text using the STT API. This is a lower-level method compared to `startProcessSTT()`/`stopProcessSTT()` - use it when you have pre-recorded audio or audio from external sources.
+
+**Example usage:**
+
+```typescript
+// From a file input
+const fileInput = document.querySelector('input[type="file"]');
+const file = fileInput.files[0];
+const text = await session.transcribeAudio(file, 'ko');
+
+// From a Blob
+const audioBlob = new Blob([audioData], { type: 'audio/wav' });
+const text = await session.transcribeAudio(audioBlob);
+```
+
+### Custom LLM response (Deprecated)
+
+```typescript
+/** @deprecated Use processTTSTF() with explicit history management instead. */
 function processCustomChat(message: string): void;
 ```
 
 'message' must not be empty
+
+> **Deprecated**: This function is deprecated. Use `processTTSTF()` instead and manage message history manually via `getMessageHistory()` if needed.
 
 This function makes the AI human speak the response message generated by a custom LLM. This function does not invoke the internal LLM.
 
@@ -384,6 +605,10 @@ When speaking begins, ChatState.SPEAKING is set in 'Chat states'.
 - `subscribeChatStates` cannot handle ChatState.LLM (only ANALYZING and SPEAKING states are triggered)
 - Use this function when you want to integrate your own custom LLM instead of using the internal LLM
 
+**Related methods:**
+- `processTTSTF()` - Recommended replacement; adds message to history and chat log automatically
+- `processLLM()` - For custom LLM integration with streaming support
+
 ### AI human speaks the 'message'
 
 ```typescript
@@ -392,32 +617,75 @@ function processTTSTF(message);
 
 'message' must not be empty
 
-While the AI human is preparing a response, ChatState.ANALYZING is set in 'Chat states'.  
+While the AI human is preparing a response, ChatState.ANALYZING is set in 'Chat states'.
 When speaking begins, ChatState.SPEAKING is set in 'Chat states'.
 
-### Start voice chat
+### Generate TTS audio from text
 
 ```typescript
-function startVoiceChat();
+function processTTS(
+  message: string,
+  options?: { resample?: boolean }
+): Promise<Blob | undefined>;
 ```
 
-ChatState.RECORDING is set in the 'Chat states'.
+| Parameter          | Required | Description                                                        |
+|--------------------|----------|--------------------------------------------------------------------|
+| `message`          | Yes      | Text to convert to speech audio                                    |
+| `options`          | No       | Options object                                                     |
+| `options.resample` | No       | Whether to resample audio to TTS target sample rate (default: `true`) |
 
-### Complete voice chat
+**Returns:** `Blob` containing audio data (audio/wav), or `undefined` if the message is empty after filtering.
+
+This function converts text to speech audio without making the AI human speak. Use this when you need the TTS audio file separately.
+
+While processing, ChatState.TTS is set in the 'Chat states'.
+
+**Example usage:**
 
 ```typescript
-function stopVoiceChat();
+const audioBlob = await session.processTTS("Hello, world!");
+if (audioBlob) {
+  const audioUrl = URL.createObjectURL(audioBlob);
+  const audio = new Audio(audioUrl);
+  audio.play();
+
+  // Remember to revoke the URL when done to prevent memory leaks
+  audio.onended = () => URL.revokeObjectURL(audioUrl);
+}
 ```
 
-ChatState.ANALYZING is set in the 'Chat states', and ChatState.RECORDING is cleared from the 'Chat states'.
+**Error handling:**
 
-After calling stopVoiceChat, the STT results are received internally.  
-The STT(Speech To Text) results are received, and ChatState.ANALYZING is cleared from the 'Chat states'.
+If an error occurs during TTS processing, a `TTSError` is passed to the error handler set via `setErrorHandler()`.
 
-If Session-setSttResultCallback is not set (default behavior):  
-&emsp;If the STT results are valid, processChat is executed.  
-If Session.setSttResultCallback is set:  
-&emsp;The STT results are passed to the callback you defined.
+### Send audio/video to STF pipeline
+
+```typescript
+function processSTF(file: Blob, format: string, message: string): Promise<string>;
+```
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `file` | Yes | The audio or video file to send as a Blob |
+| `format` | Yes | The file format (e.g., `'wav'`, `'mp4'`) |
+| `message` | Yes | The message to accompany the file |
+
+Sends an audio or video file to the STF (Speech-To-Face) pipeline for processing. This method requires an active WebRTC connection (STF mode).
+
+**Returns:** `Promise<string>` - The STF pipeline response
+
+**Throws:**
+- `Error("processSTF requires WebRTC (STF mode)")` if the session does not have an active WebRTC connection
+
+**ChatState transitions:** ANALYZING → SPEAKING
+
+**Example usage:**
+
+```typescript
+const audioBlob = new Blob([audioData], { type: 'audio/wav' });
+const response = await session.processSTF(audioBlob, 'wav', 'Hello');
+```
 
 ### Stop AI human speaking
 
@@ -425,27 +693,182 @@ If Session.setSttResultCallback is set:
 function clearBuffer(): Promise<void>;
 ```
 
-You can stop the AI human’s response.
+You can stop the AI human's response. If called before speech starts, the pending speech will not begin. If speech has already started, it will stop after the current sentence finishes.
 
-### Get user's audio stream
+### Start STT recording (HTTP API)
 
 ```typescript
-function getLocalStream(): MediaStream;
+function startProcessSTT(timeout?: number): Promise<void>;
 ```
 
-**Returns:** `MediaStream`
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `timeout` | No | Optional timeout in milliseconds to automatically stop recording |
 
-It can be used for various purposes such as recording.
+Starts recording audio for STT (Speech-To-Text) processing.
 
-> **Note:** Do not use this if the voice chat feature is not enabled.
+**How it works:**
+1. Records audio using Web Audio API (client-side)
+2. Encodes to WAV format
+3. Sends to STT REST API via HTTP
+4. Returns transcribed text
+
+This is the recommended STT method with better cross-browser support and explicit control over the transcription flow.
+
+**Throws:**
+- `Error` if already recording
+- `Error` if microphone access is denied
+
+**Browser Support:**
+- Chrome 66+
+- Firefox 76+
+- Safari 14.1+
+- iOS Safari 14.5+
+- Edge 79+
+
+### Stop STT recording and transcribe (HTTP API)
+
+```typescript
+function stopProcessSTT(language?: string): Promise<string>;
+```
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `language` | No | Optional language code for STT (e.g., 'ko', 'en') |
+
+Stops STT recording and sends the recorded audio to the STT REST API for transcription.
+
+**Returns:** Promise resolving to the transcribed text (string)
+
+**Throws:**
+- `STTError` if the API call fails
+- `Error("STT recording is not in progress")` if the recorder exists but is not recording
+- `Error("STT recording has not been started")` if `startProcessSTT()` was not called
+
+**Usage Example:**
+
+```typescript
+// Start recording
+await session.startProcessSTT();
+
+// ... user speaks ...
+
+// Stop recording and get transcribed text
+try {
+  const text = await session.stopProcessSTT('ko');
+  console.log('Transcribed:', text);
+
+  // Process the text manually or send to chat
+  if (text.trim().length > 0) {
+    session.processChat(text);
+  }
+} catch (error) {
+  if (error instanceof STTError) {
+    console.error('STT API failed:', error.message);
+  }
+}
+```
+
+### Check STT recording status
+
+```typescript
+function isSTTRecording(): boolean;
+```
+
+**Returns:** `true` if STT recording is currently in progress or has audio pending from timeout, `false` otherwise
+
+This method returns `true` in the following cases:
+1. Recording is actively in progress (after `startProcessSTT()` and before `stopProcessSTT()`)
+2. Recording was automatically stopped by timeout but `stopProcessSTT()` has not been called yet (audio is pending)
+
+**Usage Example:**
+
+```typescript
+if (!session.isSTTRecording()) {
+  await session.startProcessSTT();
+} else {
+  const text = await session.stopProcessSTT();
+  // Handle transcribed text
+}
+```
+
+### Get last recorded audio file
+
+```typescript
+public lastRecordedAudioFile: File | null;
+```
+
+**Returns:** The last recorded WAV audio file from STT processing, or `null` if no recording has been made.
+
+After calling `stopProcessSTT()`, you can access the recorded audio file for playback or other purposes.
+
+**Usage Example:**
+
+```typescript
+// Start recording
+await session.startProcessSTT();
+
+// ... user speaks ...
+
+// Stop recording and get transcribed text (language parameter is optional)
+const text = await session.stopProcessSTT();
+
+// Access the recorded audio file
+if (session.lastRecordedAudioFile) {
+  const audioUrl = URL.createObjectURL(session.lastRecordedAudioFile);
+  const audio = new Audio(audioUrl);
+  audio.play();
+  
+  // Remember to revoke the URL when done to prevent memory leaks
+  audio.onended = () => URL.revokeObjectURL(audioUrl);
+}
+```
+
+### ~~startVoiceChat~~ (Deprecated)
+
+```typescript
+/** @deprecated Use startProcessSTT() instead. */
+function startVoiceChat(): void;
+```
+
+> **Deprecated**: This method is deprecated and will be removed in a future version. Use `startProcessSTT()` instead.
+
+Previously used WebRTC data channel for STT.
+
+**Migration:** Use `startProcessSTT()` for HTTP API-based STT recording.
+
+### ~~stopVoiceChat~~ (Deprecated)
+
+```typescript
+/** @deprecated Use stopProcessSTT() instead. */
+function stopVoiceChat(): void;
+```
+
+> **Deprecated**: This method is deprecated and will be removed in a future version. Use `stopProcessSTT()` instead.
+
+Previously used WebRTC data channel for STT.
+
+**Migration:** Use `stopProcessSTT()` for HTTP API-based STT transcription.
+
+### Get user's audio stream (Deprecated)
+
+> ⚠️ **Deprecated**: Legacy voice chat mode will be removed in a future version.
+
+```typescript
+function getLocalStream(): MediaStream | null;
+```
+
+**Returns:** `MediaStream | null` — `null` if not in legacy voice chat mode.
+
+Only available in legacy voice chat mode. Returns `null` otherwise.
 
 ### Get AI human's media(video + audio) stream
 
 ```typescript
-function getRemoteStream(): MediaStream;
+function getRemoteStream(): MediaStream | undefined;
 ```
 
-**Returns:** `MediaStream`
+**Returns:** `MediaStream | undefined` — `undefined` if the Perso renderer is not yet initialized.
 
 It can be used for various purposes such as recording.
 
@@ -584,6 +1007,7 @@ enum ChatState {
   LLM = "LLM",
   ANALYZING = "ANALYZING",
   SPEAKING = "SPEAKING",
+  TTS = "TTS",
 }
 ```
 
@@ -595,6 +1019,7 @@ These values represent the conversation state.
 | `LLM` | The LLM is generating a response to the user's message. |
 | `ANALYZING` | The response generated by the LLM is being processed for the AI human to speak. |
 | `SPEAKING` | The AI human is speaking. |
+| `TTS` | The `processTTS()` function is generating audio from text. |
 
 ## ChatTool
 
@@ -615,12 +1040,12 @@ The Client tool handles the actual logic.
 'ChatTool' is a Perso Interactive class used to define a Client tool and register it with the LLM.
 
 ```typescript
-class ChatTool {
+class ChatTool<TArg = any, TResult extends object = object> {
   constructor(
     public name: string,
     public description: string,
     public parameters: object,
-    public call: (arg: any) => object | Promise<object>,
+    public call: (arg: TArg) => TResult | Promise<TResult>,
     public executeOnly: boolean = false
   );
 }
@@ -787,3 +1212,382 @@ class LLMStreamingResponseError extends Error {
 | Property | Description |
 |----------|-------------|
 | `description` | Detailed error description |
+
+## STTError
+
+An error that occurs during STT (Speech-To-Text) API calls. This error wraps `ApiError` and is thrown by `stopProcessSTT()`.
+
+```typescript
+class STTError extends Error {
+  public underlyingError: ApiError;
+}
+```
+
+| Property | Description |
+|----------|-------------|
+| `underlyingError` | The underlying `ApiError` containing HTTP status code and error details |
+
+**Usage Example:**
+
+```typescript
+import { STTError } from 'perso-interactive-sdk-web/client';
+
+try {
+  const text = await session.stopProcessSTT('ko');
+} catch (error) {
+  if (error instanceof STTError) {
+    console.error('STT API Error:', error.underlyingError.detail);
+    console.error('Error Code:', error.underlyingError.code);
+  } else {
+    console.error('Recording Error:', error.message);
+  }
+}
+```
+
+## TTSError
+
+An error that occurs during the TTS (Text-to-Speech) process, which includes `ApiError` and `TTSDecodeError`. This error is passed to the error handler when `processTTS()` fails.
+
+```typescript
+class TTSError extends Error {
+  public underlyingError: ApiError | TTSDecodeError;
+}
+```
+
+| Property | Description |
+|----------|-------------|
+| `underlyingError` | The underlying error (`ApiError` or `TTSDecodeError`) |
+
+**Example error handling:**
+
+```typescript
+session.setErrorHandler((error) => {
+  if (error instanceof TTSError) {
+    if (error.underlyingError instanceof ApiError) {
+      console.error("TTS API error:", error.underlyingError.detail);
+    } else if (error.underlyingError instanceof TTSDecodeError) {
+      console.error("TTS decode error:", error.underlyingError.description);
+    }
+  }
+});
+```
+
+## TTSDecodeError
+
+An error that occurs when decoding Base64 audio data from the TTS API fails.
+
+```typescript
+class TTSDecodeError extends Error {
+  public description: string;
+}
+```
+
+| Property | Description |
+|----------|-------------|
+| `description` | Detailed error description |
+
+## ProcessLLMOptions
+
+Options for the `processLLM()` method.
+
+```typescript
+interface ProcessLLMOptions {
+  message: string;
+  tools?: Array<ChatTool>;
+  signal?: AbortSignal;
+}
+```
+
+| Property | Required | Description |
+|----------|----------|-------------|
+| `message` | Yes | The user message to send to the LLM |
+| `tools` | No | Optional array of tools to override the session's default client tools |
+| `signal` | No | AbortSignal for cancellation support |
+
+## LLMStreamChunk
+
+Discriminated union type yielded by the `processLLM()` async generator.
+
+```typescript
+type LLMStreamChunk =
+  | {
+      type: 'message';
+      chunks: string[];
+      message: string;
+      finish: boolean;
+    }
+  | {
+      type: 'tool_call';
+      tool_calls: Array<object>;
+    }
+  | {
+      type: 'tool_result';
+      tool_call_id: string;
+      result: object;
+    }
+  | {
+      type: 'error';
+      error: Error;
+    };
+```
+
+| Type | Description |
+|------|-------------|
+| `message` | Streaming text content. `chunks` contains all accumulated text pieces, `message` is the full concatenated text, `finish` indicates if this is the final chunk |
+| `tool_call` | LLM requested tool execution. `tool_calls` contains the tool invocations with function names and arguments |
+| `tool_result` | Result of a tool execution. `tool_call_id` identifies which tool call this result belongs to, `result` contains the tool's return value |
+| `error` | An error occurred during streaming. `error` contains the `LLMError` instance |
+
+**Example handling all chunk types:**
+
+```typescript
+for await (const chunk of session.processLLM({ message: "What's the weather?" })) {
+  switch (chunk.type) {
+    case 'message':
+      // Update UI with streaming text
+      updateStreamingText(chunk.message);
+      if (chunk.finish) {
+        // Final response received
+        finalizeResponse(chunk.message);
+      }
+      break;
+    case 'tool_call':
+      // Tool is being executed (handled internally)
+      console.log('Executing tools:', chunk.tool_calls.map(t => t.function.name));
+      break;
+    case 'tool_result':
+      // Tool execution completed
+      console.log('Tool result:', chunk.tool_call_id, chunk.result);
+      break;
+    case 'error':
+      // Handle error
+      handleError(chunk.error);
+      break;
+  }
+}
+```
+
+## LlmProcessor
+
+A standalone module for LLM streaming, SSE parsing, tool execution, and message history management. Use this when you need full control over the LLM interaction outside of a `Session`.
+
+### Constructor
+
+```typescript
+class LlmProcessor {
+  constructor(config: LlmProcessorConfig);
+}
+```
+
+### LlmProcessorConfig
+
+```typescript
+interface LlmProcessorConfig {
+  apiServer: string;
+  sessionId: string;
+  clientTools: Array<ChatTool>;
+  callbacks: LlmProcessorCallbacks;
+}
+```
+
+| Property | Description |
+|----------|-------------|
+| `apiServer` | Perso API server URL |
+| `sessionId` | Session ID for the LLM conversation |
+| `clientTools` | Default client tools available for LLM tool calling |
+| `callbacks` | Callback functions for side effects |
+
+### LlmProcessorCallbacks
+
+```typescript
+interface LlmProcessorCallbacks {
+  onChatStateChange: (add: ChatState | null, remove: ChatState | null) => void;
+  onError: (error: Error) => void;
+  onChatLog: (message: string, isUser: boolean) => void;
+  onTTSTF: (message: string) => void;
+}
+```
+
+| Callback | Description |
+|----------|-------------|
+| `onChatStateChange` | Called when chat state should be added or removed |
+| `onError` | Called when an error occurs during processing |
+| `onChatLog` | Called when a message should be added to the chat log |
+| `onTTSTF` | Called when a message should be spoken by the AI human |
+
+### Stream LLM responses
+
+```typescript
+function processLLM(options: ProcessLLMOptions): AsyncGenerator<LLMStreamChunk>;
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `options` | Configuration object containing message, optional tools, and abort signal |
+
+**Returns:** `AsyncGenerator<LLMStreamChunk>` - An async generator that yields streaming chunks
+
+Streams LLM responses with full tool execution support. Tool calls are executed internally, with `tool_call` and `tool_result` chunks yielded for observability. If tools require a follow-up LLM call, the generator loops transparently (up to 10 rounds maximum).
+
+**Example usage:**
+
+```typescript
+import { LlmProcessor, ChatTool, ChatState } from 'perso-interactive-sdk-web/client';
+
+const processor = new LlmProcessor({
+  apiServer: "https://live-api.perso.ai",
+  sessionId: "your-session-id",
+  clientTools: [weatherTool],
+  callbacks: {
+    onChatStateChange: (add, remove) => { /* update UI state */ },
+    onError: (error) => { console.error(error); },
+    onChatLog: (message, isUser) => { /* update chat UI */ },
+    onTTSTF: (message) => { /* trigger avatar speech */ },
+  }
+});
+
+for await (const chunk of processor.processLLM({ message: "Hello!" })) {
+  if (chunk.type === 'message' && chunk.finish) {
+    console.log('Complete:', chunk.message);
+  }
+}
+```
+
+### Get message history
+
+```typescript
+function getHistory(): ReadonlyArray<object>;
+```
+
+**Returns:** Read-only array of the conversation history managed by this processor.
+
+### Add to message history
+
+```typescript
+function addToHistory(entry: object): void;
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `entry` | A message history entry to append (e.g., `{ role: 'assistant', content: '...' }`) |
+
+## WavRecorder
+
+Records audio from the microphone and produces WAV files using Web Audio API with AudioWorklet. This is a standalone utility for capturing audio independently of the `Session` STT flow.
+
+**Browser Support:**
+- Chrome 66+
+- Firefox 76+
+- Safari 14.1+
+- iOS Safari 14.5+
+- Edge 79+
+
+### Constructor
+
+```typescript
+class WavRecorder {
+  constructor(options?: WavRecorderOptions);
+}
+```
+
+### WavRecorderOptions
+
+```typescript
+interface WavRecorderOptions {
+  channels?: number;
+  targetSampleRate?: number;
+}
+```
+
+| Property | Required | Description |
+|----------|----------|-------------|
+| `channels` | No | Number of audio channels (default: 1) |
+| `targetSampleRate` | No | Target sample rate for the output WAV. If different from the device's native rate, audio will be resampled. |
+
+### Start recording
+
+```typescript
+function start(): Promise<void>;
+```
+
+Starts recording audio from the microphone. Requests microphone permission via `getUserMedia`.
+
+**Throws:**
+- `Error` if already recording
+- `Error` if microphone access is denied
+
+### Stop recording
+
+```typescript
+function stop(): Promise<File>;
+```
+
+Stops recording and returns the recorded audio as a WAV `File`.
+
+**Returns:** `Promise<File>` - A File containing the recorded WAV audio (`audio/wav`)
+
+**Throws:** `Error` if not currently recording
+
+### Check recording status
+
+```typescript
+function isRecording(): boolean;
+```
+
+**Returns:** `true` if recording is currently in progress, `false` otherwise
+
+### Factory function
+
+```typescript
+function createWavRecorder(options?: WavRecorderOptions): WavRecorder;
+```
+
+Convenience factory function to create a `WavRecorder` instance.
+
+**Example usage:**
+
+```typescript
+import { WavRecorder, createWavRecorder } from 'perso-interactive-sdk-web/client';
+
+// Using factory function
+const recorder = createWavRecorder({ targetSampleRate: 16000 });
+
+// Or using constructor directly
+const recorder = new WavRecorder({ channels: 1, targetSampleRate: 16000 });
+
+// Start recording
+await recorder.start();
+
+// ... user speaks ...
+
+// Stop recording and get WAV file
+const audioFile = await recorder.stop();
+
+// Use the file (e.g., send to server, play back, or pass to session.transcribeAudio)
+const text = await session.transcribeAudio(audioFile, 'en');
+```
+
+## Audio Utilities
+
+### Get WAV sample rate
+
+```typescript
+function getWavSampleRate(wavData: ArrayBuffer): number;
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `wavData` | Raw WAV file data as ArrayBuffer |
+
+**Returns:** The sample rate of the WAV file (e.g., 16000, 44100, 48000)
+
+Extracts the sample rate from WAV file header data. Useful for inspecting audio files before processing.
+
+### TTS Target Sample Rate
+
+```typescript
+const TTS_TARGET_SAMPLE_RATE: number; // 16000
+```
+
+The target sample rate (16000 Hz) used by the TTS system. Use this constant when resampling audio for TTS compatibility.
+

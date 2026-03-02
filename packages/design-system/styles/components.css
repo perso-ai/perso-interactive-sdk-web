@@ -1,0 +1,287 @@
+/* Card/Panel */
+
+.section {
+	background: white;
+	border: 1px solid #ddd;
+	border-radius: 8px;
+	padding: 16px;
+	margin-bottom: 16px;
+}
+
+/* Form layout */
+
+.field {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-bottom: 12px;
+}
+
+.field label {
+	flex-shrink: 0;
+	min-width: 120px;
+	font-size: 14px;
+	font-weight: 500;
+	color: #333;
+}
+
+.field label.toggle-switch {
+	min-width: auto;
+}
+
+.field > .row {
+	flex: 1;
+}
+
+.field select {
+	flex: 1;
+	min-width: 0;
+}
+
+.row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+
+.field-row {
+	margin-bottom: 12px;
+}
+
+.field-row .field {
+	flex: 1;
+	min-width: 150px;
+	margin-bottom: 0;
+}
+
+.field .status:empty {
+	display: none;
+}
+
+/* Configuration */
+
+.config-group {
+	padding: 16px;
+	border: 1px solid #e8e8e8;
+	border-radius: 6px;
+	margin-bottom: 12px;
+	background: #fafbfc;
+}
+
+.config-group.disabled {
+	opacity: 0.45;
+	pointer-events: none;
+}
+
+.config-step-label {
+	font-size: 11px;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+	color: #888;
+	margin-bottom: 12px;
+}
+
+/* Avatar + feature panels layout */
+
+.avatar-row {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+.avatar-bottom-row {
+	display: flex;
+	gap: 12px;
+	align-items: stretch;
+}
+
+.section.avatar-section {
+	flex-shrink: 0;
+	width: 280px;
+	margin-bottom: 0;
+	display: flex;
+	flex-direction: column;
+}
+
+.section.avatar-section video {
+	min-height: 280px;
+}
+
+.avatar-right {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+.avatar-right .section:last-child {
+	margin-bottom: 0;
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+}
+
+.avatar-right .section:last-child .chat-log {
+	height: 330px;
+}
+
+.avatar-row > .section,
+.avatar-right .section {
+	margin-bottom: 0;
+}
+
+.avatar-right .section > .row + .row {
+	margin-top: 8px;
+}
+
+/* State panel */
+
+.state-panel {
+	padding: 8px 0 0 0;
+}
+
+.state-panel p {
+	margin: 0 0 4px 0;
+	font-size: 12px;
+}
+
+/* File drop zone */
+
+.drop-zone {
+	border: 2px dashed #ccc;
+	border-radius: 8px;
+	padding: 24px;
+	text-align: center;
+	cursor: pointer;
+	transition: border-color 0.2s, background 0.2s;
+}
+
+.drop-zone:hover,
+.drop-zone.dragover {
+	border-color: #888;
+	background: rgba(0, 0, 0, 0.02);
+}
+
+.drop-zone-label {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	font-size: 14px;
+	color: #888;
+}
+
+.drop-zone-label .browse {
+	font-weight: 600;
+	color: #333;
+}
+
+.drop-zone input[type='file'] {
+	display: none;
+}
+
+/* File info card */
+
+.file-info {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 10px 12px;
+	border: 1px solid #ddd;
+	border-radius: 8px;
+	margin-top: 8px;
+}
+
+.file-info-icon {
+	flex-shrink: 0;
+	width: 36px;
+	height: 36px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: #f0f0f0;
+	border-radius: 6px;
+	font-size: 18px;
+}
+
+.file-info-details {
+	flex: 1;
+	min-width: 0;
+}
+
+.file-info-name {
+	font-size: 13px;
+	font-weight: 500;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.file-info-size {
+	font-size: 11px;
+	color: #999;
+}
+
+.file-info-remove {
+	flex-shrink: 0;
+	background: none;
+	border: none;
+	font-size: 18px;
+	cursor: pointer;
+	color: #999;
+	padding: 4px;
+	line-height: 1;
+}
+
+.file-info-remove:hover {
+	color: #333;
+}
+
+/* STF row layout */
+
+.stf-row {
+	display: flex;
+	gap: 12px;
+	align-items: stretch;
+}
+
+.stf-row .drop-zone {
+	flex: 0 0 180px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.stf-row .stf-file-panel {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.stf-file-panel .file-info {
+	margin-top: 0;
+}
+
+/* Page header */
+
+.page-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 8px;
+}
+
+.page-header h1 {
+	margin-bottom: 0;
+}
+
+.nav-links {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
