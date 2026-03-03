@@ -95,7 +95,11 @@ const sessionId = await createSessionId(apiServer, apiKey, {
 });
 
 const session = await createSession(apiServer, sessionId, 1920, 1080, []);
-session.setSrc(document.getElementById("video"));
+
+const videoEl = document.getElementById("video");
+if (videoEl instanceof HTMLVideoElement) {
+  session.setSrc(videoEl);
+}
 ```
 
 ### Client-side (`perso-interactive-sdk-web/client`)
@@ -120,7 +124,10 @@ const sessionId = await fetch("/api/session", { method: "POST" })
 const session = await createSession(apiServer, sessionId, 1920, 1080, []);
 
 // Bind to video element
-session.setSrc(videoElement);
+const videoEl = document.getElementById("video");
+if (videoEl instanceof HTMLVideoElement) {
+  session.setSrc(videoEl);
+}
 
 // Subscribe to chat states
 session.subscribeChatStates((states) => {
@@ -131,15 +138,56 @@ session.subscribeChatStates((states) => {
 session.subscribeChatLog((chatLog) => {
   console.log("Chat log:", chatLog);
 });
+```
 
-// Send a message
-session.processChat("Hello!");
+#### Chat (Recommended) — processLLM → processTTS → processSTF
 
-// Voice chat using STT
+Full pipeline with individual step control. Use this when you need to handle each stage (LLM response, TTS audio, avatar animation) separately.
+
+```typescript
+// 1. Get LLM response
+const llmGenerator = session.processLLM({ message: "Hello!" });
+let llmResponse = "";
+for await (const chunk of llmGenerator) {
+  if (chunk.type === "message" && chunk.finish) {
+    llmResponse = chunk.message;
+  }
+}
+
+// 2. Convert text to speech
+const audioBlob = await session.processTTS(llmResponse);
+
+// 3. Animate avatar with audio
+if (audioBlob) {
+  await session.processSTF(audioBlob, "wav", llmResponse);
+}
+```
+
+With voice input (STT → LLM → TTS → STF):
+
+```typescript
 await session.startProcessSTT();
 const text = await session.stopProcessSTT();
-session.processChat(text);
+// Pass `text` to the processLLM pipeline above
+```
 
+#### Chat (Simple) — processChat
+
+All-in-one call that runs LLM → TTS → STF internally. Use this when you don't need control over individual steps.
+
+```typescript
+session.processChat("Hello!");
+```
+
+#### Direct Speech — processTTSTF
+
+Avatar speaks text directly without LLM. Useful for scripted greetings, announcements, or guided messages.
+
+```typescript
+session.processTTSTF("Welcome! How can I help you today?");
+```
+
+```typescript
 // Stop session
 session.stopSession();
 ```
@@ -200,7 +248,10 @@ For direct browser usage via `<script>` tag without a bundler. The SDK exposes a
       []
     );
 
-    session.setSrc(document.getElementById("video"));
+    const videoEl = document.getElementById("video");
+    if (videoEl instanceof HTMLVideoElement) {
+      session.setSrc(videoEl);
+    }
   }
 
   start();

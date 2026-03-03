@@ -120,23 +120,76 @@
 	}
 
 	function onMessageSubmit(message: string) {
-		void processComplete(message);
+		void processCompleteStreaming(message);
 	}
 
+	async function synthesizeChunk(currentSession: Session, chunk: string) {
+		const audioBlob = await currentSession.processTTS(chunk);
+		if (!audioBlob) {
+			console.warn('TTS returned no audio for chunk');
+			return;
+		}
+		await currentSession.processSTF(audioBlob, 'wav', chunk);
+	}
+
+	/** Sequential: collects all LLM chunks first, then runs TTS/STF one by one. Simpler flow, useful for debugging. */
 	async function processComplete(text: string) {
 		try {
 			chatLog = [...chatLog, { text, isUser: true, timestamp: new Date() }];
 
 			const llmGenerator = session.processLLM({ message: text });
-			let llmResponse = '';
 			const messageChunks: string[] = [];
+			let finished = false;
+
 			for await (const chunk of llmGenerator) {
 				if (chunk.type === 'message') {
-					for (let i = messageChunks.length; i < chunk.chunks.length; i++) {
-						messageChunks.push(chunk.chunks[i]);
-					}
-					if (chunk.finish) {
-						llmResponse = chunk.message;
+					if (chunk.finish) finished = true;
+
+					const newChunks = chunk.chunks.slice(messageChunks.length);
+					messageChunks.push(...newChunks);
+				} else if (chunk.type === 'error') {
+					console.error('LLM error:', chunk.error);
+					return;
+				}
+			}
+
+			if (!finished || messageChunks.length === 0) {
+				console.warn('LLM returned empty response');
+				return;
+			}
+
+			const llmResponse = messageChunks.join('');
+			chatLog = [...chatLog, { text: llmResponse, isUser: false, timestamp: new Date() }];
+
+			for (const c of messageChunks) {
+				if (c.trim().length === 0) continue;
+				await synthesizeChunk(session, c);
+			}
+		} catch (error) {
+			console.error('processComplete error:', error);
+		}
+	}
+
+	/** Streaming: enqueues TTS/STF via promise chain as LLM chunks arrive. Lower time-to-first-speech, suited for production. */
+	async function processCompleteStreaming(text: string) {
+		try {
+			chatLog = [...chatLog, { text, isUser: true, timestamp: new Date() }];
+
+			const llmGenerator = session.processLLM({ message: text });
+			const messageChunks: string[] = [];
+			let queue = Promise.resolve();
+			let finished = false;
+
+			for await (const chunk of llmGenerator) {
+				if (chunk.type === 'message') {
+					if (chunk.finish) finished = true;
+
+					const newChunks = chunk.chunks.slice(messageChunks.length);
+					messageChunks.push(...newChunks);
+
+					for (const c of newChunks) {
+						if (c.trim().length === 0) continue;
+						queue = queue.then(() => synthesizeChunk(session, c));
 					}
 				} else if (chunk.type === 'error') {
 					console.error('LLM error:', chunk.error);
@@ -144,22 +197,17 @@
 				}
 			}
 
-			if (llmResponse.trim().length === 0) {
+			if (!finished || messageChunks.length === 0) {
 				console.warn('LLM returned empty response');
 				return;
 			}
 
+			const llmResponse = messageChunks.join('');
 			chatLog = [...chatLog, { text: llmResponse, isUser: false, timestamp: new Date() }];
 
-			const audioBlob = await session.processTTS(llmResponse);
-			if (!audioBlob) {
-				console.warn('TTS returned no audio');
-				return;
-			}
-
-			await session.processSTF(audioBlob, 'wav', llmResponse);
+			await queue;
 		} catch (error) {
-			console.error('processComplete error:', error);
+			console.error('processCompleteStreaming error:', error);
 		}
 	}
 
@@ -174,7 +222,7 @@
 					return;
 				}
 
-				await processComplete(text);
+				await processCompleteStreaming(text);
 			}
 		} catch (error) {
 			console.error(error);

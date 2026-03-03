@@ -172,26 +172,85 @@ export default function LiveChat() {
 	}
 
 	function onMessageSubmit(message: string) {
-		void processComplete(message);
+		void processCompleteStreaming(message);
 	}
 
+	async function synthesizeChunk(currentSession: Session, chunk: string) {
+		const audioBlob = await currentSession.processTTS(chunk);
+		if (!audioBlob) {
+			console.warn('TTS returned no audio for chunk');
+			return;
+		}
+		await currentSession.processSTF(audioBlob, 'wav', chunk);
+	}
+
+	/** Sequential: collects all LLM chunks first, then runs TTS/STF one by one. Simpler flow, useful for debugging. */
 	async function processComplete(text: string) {
-		const sess = sessionRef.current;
-		if (!sess) return;
+		const currentSession = sessionRef.current;
+		if (!currentSession) return;
 
 		try {
 			setChatLog((prev) => [...prev, { text, isUser: true, timestamp: new Date() }]);
 
-			const llmGenerator = sess.processLLM({ message: text });
-			let llmResponse = '';
+			const llmGenerator = currentSession.processLLM({ message: text });
 			const messageChunks: string[] = [];
+			let finished = false;
+
 			for await (const chunk of llmGenerator) {
 				if (chunk.type === 'message') {
-					for (let i = messageChunks.length; i < chunk.chunks.length; i++) {
-						messageChunks.push(chunk.chunks[i]);
-					}
-					if (chunk.finish) {
-						llmResponse = chunk.message;
+					if (chunk.finish) finished = true;
+
+					const newChunks = chunk.chunks.slice(messageChunks.length);
+					messageChunks.push(...newChunks);
+				} else if (chunk.type === 'error') {
+					console.error('LLM error:', chunk.error);
+					return;
+				}
+			}
+
+			if (!finished || messageChunks.length === 0) {
+				console.warn('LLM returned empty response');
+				return;
+			}
+
+			const llmResponse = messageChunks.join('');
+			setChatLog((prev) => [
+				...prev,
+				{ text: llmResponse, isUser: false, timestamp: new Date() },
+			]);
+
+			for (const c of messageChunks) {
+				if (c.trim().length === 0) continue;
+				await synthesizeChunk(currentSession, c);
+			}
+		} catch (error) {
+			console.error('processComplete error:', error);
+		}
+	}
+
+	/** Streaming: enqueues TTS/STF via promise chain as LLM chunks arrive. Lower time-to-first-speech, suited for production. */
+	async function processCompleteStreaming(text: string) {
+		const currentSession = sessionRef.current;
+		if (!currentSession) return;
+
+		try {
+			setChatLog((prev) => [...prev, { text, isUser: true, timestamp: new Date() }]);
+
+			const llmGenerator = currentSession.processLLM({ message: text });
+			const messageChunks: string[] = [];
+			let queue = Promise.resolve();
+			let finished = false;
+
+			for await (const chunk of llmGenerator) {
+				if (chunk.type === 'message') {
+					if (chunk.finish) finished = true;
+
+					const newChunks = chunk.chunks.slice(messageChunks.length);
+					messageChunks.push(...newChunks);
+
+					for (const c of newChunks) {
+						if (c.trim().length === 0) continue;
+						queue = queue.then(() => synthesizeChunk(currentSession, c));
 					}
 				} else if (chunk.type === 'error') {
 					console.error('LLM error:', chunk.error);
@@ -199,42 +258,37 @@ export default function LiveChat() {
 				}
 			}
 
-			if (llmResponse.trim().length === 0) {
+			if (!finished || messageChunks.length === 0) {
 				console.warn('LLM returned empty response');
 				return;
 			}
 
+			const llmResponse = messageChunks.join('');
 			setChatLog((prev) => [
 				...prev,
 				{ text: llmResponse, isUser: false, timestamp: new Date() },
 			]);
 
-			const audioBlob = await sess.processTTS(llmResponse);
-			if (!audioBlob) {
-				console.warn('TTS returned no audio');
-				return;
-			}
-
-			await sess.processSTF(audioBlob, 'wav', llmResponse);
+			await queue;
 		} catch (error) {
-			console.error('processComplete error:', error);
+			console.error('processCompleteStreaming error:', error);
 		}
 	}
 
 	async function onVoiceChatClicked() {
-		const sess = sessionRef.current;
-		if (!sess) return;
+		const currentSession = sessionRef.current;
+		if (!currentSession) return;
 
 		try {
 			if (available) {
-				sess.startProcessSTT();
+				currentSession.startProcessSTT();
 			} else {
-				const text = await sess.stopProcessSTT();
+				const text = await currentSession.stopProcessSTT();
 				if (text.trim().length === 0) {
 					console.warn('STT returned empty text');
 					return;
 				}
-				await processComplete(text);
+				await processCompleteStreaming(text);
 			}
 		} catch (error) {
 			console.error(error);
