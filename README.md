@@ -2,7 +2,7 @@
 
 <div align="center">
   <h1>Perso Interactive SDK</h1>
-  <p>Prototype and compare Perso Interactive integrations across SvelteKit, Vanilla JS, and TypeScript demos.</p>
+  <p>Prototype and compare Perso Interactive integrations across SvelteKit, Next.js, Vanilla JS, and TypeScript demos.</p>
 </div>
 
 <p align="center">
@@ -34,6 +34,7 @@ Provides Perso Interactive Web SDK and demo apps.
 ### **Demo App Spec**
 
 - Sveltekit
+- Next.js (React)
 - VanillaJS
 - Typescript
 
@@ -64,7 +65,7 @@ import {
 } from "perso-interactive-sdk-web/client";
 ```
 
-**Server-side (Node.js/SvelteKit):**
+**Server-side (Node.js/SvelteKit/Next.js):**
 
 ```ts
 import { createSessionId, getIntroMessage } from "perso-interactive-sdk-web/server";
@@ -99,6 +100,10 @@ import { createSessionId, getIntroMessage } from "perso-interactive-sdk-web/serv
       ```bash
         pnpm svelte
       ```
+    - Next.js app:
+      ```bash
+        pnpm nextjs
+      ```
     - Vanilla app:
       ```bash
         pnpm vanilla
@@ -121,10 +126,18 @@ import { createSessionId, getIntroMessage } from "perso-interactive-sdk-web/serv
   export const persoInteractiveApiKey = "YOUR API KEY";
   ```
 
-- **apps/vanilla (`@perso-interactive-sdk-web-web/app-vanilla`)**  
+- **apps/nextjs (`@perso-interactive-sdk-web/app-nextjs`)**
+  Next.js (React) demo with server-side session creation via App Router API route. Run `pnpm nextjs` to start on port 5174.
+
+  ```ts
+  // .env.local
+  PERSO_INTERACTIVE_API_KEY = "YOUR API KEY";
+  ```
+
+- **apps/vanilla (`@perso-interactive-sdk-web-web/app-vanilla`)**
   An HTML/JS demo powered by Vite. Run `pnpm vanilla` to see the basic UI and SDK integration.
 
-- **apps/typescript (`@perso-interactive-sdk-web-web/app-typescript`)**  
+- **apps/typescript (`@perso-interactive-sdk-web-web/app-typescript`)**
   TypeScript version of the Vanilla demo. Run `pnpm typescript` to see the same UI with type support.
 
 ## Session flow overview

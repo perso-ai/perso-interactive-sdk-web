@@ -8,6 +8,11 @@
 /packages/tsconfig/node_modules
 /packages/eslint-config/node_modules
 /packages/prettier-config/node_modules
+/apps/nextjs/node_modules
+/apps/nextjs/.next
+/apps/nextjs/out
+/apps/nextjs/build
+/apps/nextjs/tsconfig.tsbuildinfo
 
 /build
 /apps/svelte/.svelte-kit

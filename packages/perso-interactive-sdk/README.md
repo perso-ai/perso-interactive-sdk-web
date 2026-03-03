@@ -17,7 +17,7 @@ pnpm add perso-interactive-sdk-web
 
 ## Usage
 
-> 📖 **Looking for step-by-step examples?** See the [Example Guide](./example-guide/en/README.md) for annotated code snippets covering LLM, TTS, STT, STF, and full pipeline patterns.
+> 📖 **Looking for step-by-step examples?** See the [Example Guide](https://github.com/perso-ai/perso-interactive-sdk-web/blob/master/packages/perso-interactive-sdk/example-guide/en/README.md) for annotated code snippets covering LLM, TTS, STT, STF, and full pipeline patterns.
 
 The SDK provides two entry points:
 
@@ -211,7 +211,7 @@ For direct browser usage via `<script>` tag without a bundler. The SDK exposes a
 
 ### Example Guide
 
-> 📖 **Example Guide**: [English](./example-guide/en/README.md)
+> 📖 **Example Guide**: [English](https://github.com/perso-ai/perso-interactive-sdk-web/blob/master/packages/perso-interactive-sdk/example-guide/en/README.md)
 
 ## API Reference
 
@@ -288,7 +288,7 @@ For direct browser usage via `<script>` tag without a bundler. The SDK exposes a
 | ------------------------ | -------------- | ---------------------------------------------- |
 | `lastRecordedAudioFile`  | `File \| null` | Last recorded WAV audio file from STT          |
 
-For detailed API documentation, see [api-docs.md](../../core/api-docs.md).
+For detailed API documentation, see [api-docs.md](https://github.com/perso-ai/perso-interactive-sdk-web/blob/master/core/api-docs.md).
 
 ## License
 

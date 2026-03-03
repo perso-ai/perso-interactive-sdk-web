@@ -1,6 +1,6 @@
 {
 	"name": "perso-interactive-sdk-web",
-	"version": "1.2.0",
+	"version": "1.2.1",
 	"description": "Perso Interactive Web SDK - WebRTC-based real-time interactive AI avatar sessions",
 	"type": "module",
 	"private": false,
@@ -20,7 +20,8 @@
 	"license": "Apache-2.0",
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/perso-ai/perso-interactive-sdk-web.git"
+		"url": "https://github.com/perso-ai/perso-interactive-sdk-web.git",
+		"directory": "packages/perso-interactive-sdk"
 	},
 	"homepage": "https://github.com/perso-ai/perso-interactive-sdk-web#readme",
 	"bugs": {

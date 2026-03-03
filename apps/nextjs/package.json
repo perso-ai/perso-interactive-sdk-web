@@ -1,0 +1,29 @@
+{
+	"name": "@perso-interactive-sdk-web/app-nextjs",
+	"version": "0.0.1",
+	"type": "module",
+	"private": true,
+	"scripts": {
+		"dev": "next dev --port 5174",
+		"build": "next build",
+		"start": "next start",
+		"check": "tsc --noEmit",
+		"lint": "prettier --check . && next lint",
+		"format": "prettier --write ."
+	},
+	"dependencies": {
+		"@perso-interactive-sdk-web/design-system": "workspace:*",
+		"perso-interactive-sdk-web": "workspace:*",
+		"next": "^15.3.0",
+		"react": "^19.1.0",
+		"react-dom": "^19.1.0"
+	},
+	"devDependencies": {
+		"@perso-interactive-sdk-web/prettier-config": "workspace:*",
+		"@perso-interactive-sdk-web/tsconfig": "workspace:*",
+		"@types/node": "^24.10.0",
+		"@types/react": "^19.1.0",
+		"@types/react-dom": "^19.1.0",
+		"typescript": "^5.7.0"
+	}
+}
