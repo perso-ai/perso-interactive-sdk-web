@@ -233,9 +233,19 @@ export class Session {
 		if (!this.perso) {
 			throw new Error('processSTF requires WebRTC (STF mode)');
 		}
-		if (this.pipelineSuppressed) return '';
+		this.pipelineSuppressed = false;
 		this.setChatState(ChatState.ANALYZING);
-		return await this.perso.stf(file, format, message);
+		try {
+			const result = await this.perso.stf(file, format, message);
+			if (this.pipelineSuppressed) {
+				this.setChatState(null, ChatState.ANALYZING);
+				return result;
+			}
+			return result;
+		} catch (error) {
+			this.setChatState(null, ChatState.ANALYZING);
+			throw error;
+		}
 	}
 
 	async processTTS(
@@ -245,7 +255,7 @@ export class Session {
 		const { resample = true } = options;
 		const filteredMessage = this.removeEmoji(message).trim();
 		if (filteredMessage.length === 0) return;
-		if (this.pipelineSuppressed) return undefined;
+		this.pipelineSuppressed = false;
 
 		const textForTTS = /[.?!]$/.test(filteredMessage) ? filteredMessage : filteredMessage + '.';
 
@@ -255,6 +265,7 @@ export class Session {
 				sessionId: this.sessionId,
 				text: textForTTS
 			});
+			if (this.pipelineSuppressed) return undefined;
 			const ttsResult = await decodeTTSAudio(audio, resample);
 			return ttsResult;
 		} catch (error) {

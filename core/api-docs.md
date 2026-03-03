@@ -331,7 +331,10 @@ const sessionId = await createSessionId(apiServer, apiKey, {
 });
 
 const session = await createSession(apiServer, sessionId, 1920, 1080, []);
-session.setSrc(document.getElementById("video"));
+const videoEl = document.getElementById("video");
+if (videoEl instanceof HTMLVideoElement) {
+  session.setSrc(videoEl);
+}
 ```
 
 ### Get intro message
