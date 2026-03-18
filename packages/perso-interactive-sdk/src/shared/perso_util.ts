@@ -1,4 +1,5 @@
 import { ApiError } from './error';
+import type { SessionTemplate } from './types';
 
 export enum SessionCapabilityName {
 	LLM = 'LLM',
@@ -17,6 +18,12 @@ export enum SessionEvent {
 	SESSION_TTS = 'SESSION_TTS',
 	SESSION_STT = 'SESSION_STT',
 	SESSION_LLM = 'SESSION_LLM'
+}
+
+export interface TextNormalizationDownload {
+	config_id: string;
+	config_name: string;
+	file_url: string;
 }
 
 export class PersoUtil {
@@ -149,12 +156,21 @@ export class PersoUtil {
 	 */
 	static async makeTTS(
 		apiServer: string,
-		{ sessionId, text }: { sessionId: string; text: string }
+		{
+			sessionId,
+			text,
+			locale,
+			output_format
+		}: { sessionId: string; text: string; locale?: string; output_format?: string }
 	): Promise<{ audio: string }> {
+		const body: Record<string, string> = { text };
+		if (locale) body.locale = locale;
+		if (output_format) body.output_format = output_format;
+
 		const response = await fetch(`${apiServer}/api/v1/session/${sessionId}/tts/`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ text })
+			body: JSON.stringify(body)
 		});
 		return (await this.parseJson(response)) as { audio: string };
 	}
@@ -227,6 +243,97 @@ export class PersoUtil {
 	 *   }
 	 * ]
 	 */
+	/**
+	 * @param apiServer Perso Interactive API Server
+	 * @param apiKey Perso Interactive API Key
+	 * @returns JSON
+	 * [
+	 *   {
+	 *     "textnormalizationconfig_id": string,
+	 *     "name": string,
+	 *     "created_at": string
+	 *   }
+	 * ]
+	 */
+	static async getTextNormalizations(apiServer: string, apiKey: string) {
+		const promise = fetch(`${apiServer}/api/v1/settings/text_normalization_config/`, {
+			headers: {
+				'PersoLive-APIKey': apiKey
+			},
+			method: 'GET'
+		});
+		const response = await promise;
+
+		return await this.parseJson(response);
+	}
+
+	/**
+	 * Downloads the ruleset data file for a Text Normalization Config.
+	 * Returns a pre-signed Blob Storage URL for the CSV file.
+	 * The client can download the file directly from this URL and leverage Azure Blob Storage ETag for caching.
+	 * @param apiServer Perso Interactive API Server
+	 * @param apiKey Perso Interactive API Key
+	 * @param configId Text Normalization Config ID
+	 * @returns JSON
+	 * {
+	 *   "config_id": string,
+	 *   "config_name": string,
+	 *   "file_url": string
+	 * }
+	 */
+	static async downloadTextNormalization(apiServer: string, apiKey: string, configId: string): Promise<TextNormalizationDownload> {
+		const response = await fetch(
+			`${apiServer}/api/v1/settings/text_normalization_config/${configId}/download/`,
+			{
+				headers: {
+					'PersoLive-APIKey': apiKey
+				},
+				method: 'GET'
+			}
+		);
+
+		return await this.parseJson(response);
+	}
+
+	/**
+	 * Retrieves the list of session templates.
+	 * @param apiServer Perso Interactive API Server
+	 * @param apiKey Perso Interactive API Key
+	 * @returns Array of SessionTemplate objects
+	 */
+	static async getSessionTemplates(
+		apiServer: string,
+		apiKey: string
+	): Promise<SessionTemplate[]> {
+		const response = await fetch(`${apiServer}/api/v1/session_template/`, {
+			headers: { 'PersoLive-APIKey': apiKey },
+			method: 'GET'
+		});
+		return await this.parseJson(response);
+	}
+
+	/**
+	 * Retrieves a single session template by ID.
+	 * @param apiServer Perso Interactive API Server
+	 * @param apiKey Perso Interactive API Key
+	 * @param sessionTemplateId Session Template ID
+	 * @returns SessionTemplate object
+	 */
+	static async getSessionTemplate(
+		apiServer: string,
+		apiKey: string,
+		sessionTemplateId: string
+	): Promise<SessionTemplate> {
+		const response = await fetch(
+			`${apiServer}/api/v1/session_template/${sessionTemplateId}/`,
+			{
+				headers: { 'PersoLive-APIKey': apiKey },
+				method: 'GET'
+			}
+		);
+		return await this.parseJson(response);
+	}
+
 	static async getMcpServers(apiServer: string, apiKey: string) {
 		const promise = fetch(`${apiServer}/api/v1/settings/mcp_type/`, {
 			headers: {
