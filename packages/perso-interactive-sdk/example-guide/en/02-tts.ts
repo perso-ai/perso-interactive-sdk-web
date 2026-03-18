@@ -113,20 +113,32 @@ async function example_tts_errorHandling(session: Session) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * By default, processTTS() resamples audio to 16kHz.
- * This is for compatibility with STF (avatar lip-sync).
- *
- * If you need original quality audio without resampling,
- * use the resample: false option.
+ * By default, processTTS() does NOT resample audio (original quality).
+ * If you need resampled audio at 16kHz for STF (avatar lip-sync),
+ * use the resample: true option.
  */
 async function example_tts_noResample(session: Session) {
-	// With resampling (default, recommended when using with STF)
-	const audioForSTF = await session.processTTS('Speech to send to the avatar', { resample: true });
+	// Without resampling (default, original quality for browser playback)
+	const audioForPlayback = await session.processTTS('High-quality speech playback');
 
-	// Without resampling (original quality, for browser playback only)
-	const audioForPlayback = await session.processTTS('High-quality speech playback', { resample: false });
+	// With resampling (recommended when using with STF)
+	const audioForSTF = await session.processTTS('Speech to send to the avatar', { resample: true });
 
 	return { audioForSTF, audioForPlayback };
 }
 
-export { example_tts_basic, example_tts_errorHandling, example_tts_noResample };
+// ─────────────────────────────────────────────────────────────────────────────
+// Locale & Output Format
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * processTTS() accepts optional locale and output_format parameters.
+ * These are passed directly to the TTS API endpoint.
+ */
+async function example_tts_localeAndFormat(session: Session) {
+	const audio = await session.processTTS('Hello, how are you?');
+
+	return audio;
+}
+
+export { example_tts_basic, example_tts_errorHandling, example_tts_noResample, example_tts_localeAndFormat };

@@ -4,5 +4,13 @@
 	"[svelte]": {
 		"editor.defaultFormatter": "svelte.svelte-vscode"
 	},
-	"svelte.language-server.runtime": "node"
+	"svelte.language-server.runtime": "node",
+	"azureFunctions.deploySubpath": "apps/sdk-tester/api",
+	"azureFunctions.postDeployTask": "npm install (functions)",
+	"azureFunctions.projectLanguage": "TypeScript",
+	"azureFunctions.projectRuntime": "~4",
+	"debug.internalConsoleOptions": "neverOpen",
+	"azureFunctions.projectLanguageModel": 4,
+	"azureFunctions.projectSubpath": "apps/sdk-tester/api",
+	"azureFunctions.preDeployTask": "npm prune (functions)"
 }

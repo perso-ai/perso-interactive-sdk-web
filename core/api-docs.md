@@ -193,6 +193,76 @@ function getMcpServers(apiServer: string, apiKey: string): Promise<any>;
 ]
 ```
 
+### Get Text Normalization Config list
+
+```typescript
+function getTextNormalizations(apiServer: string, apiKey: string): Promise<any>;
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `apiServer` | API Server URL |
+| `apiKey` | API Key |
+
+**Returns:** Array of TextNormalizationConfig objects
+
+```JSON
+[
+  {
+    "textnormalizationconfig_id": string,
+    "name": string,
+    "created_at": string
+  }
+]
+```
+
+### Download Text Normalization Config
+
+Downloads the ruleset data file for a specific Text Normalization Config. Returns a pre-signed Blob Storage URL for the CSV file that can be downloaded directly. Supports Azure Blob Storage ETag for caching.
+
+**Top-level convenience function** (available from `perso-interactive-sdk-web/client`):
+
+```typescript
+function getTextNormalization(
+  apiServer: string,
+  apiKey: string,
+  configId: string
+): Promise<TextNormalizationDownload>;
+```
+
+**Low-level method** (available via `PersoUtilServer` from `perso-interactive-sdk-web/server`):
+
+```typescript
+PersoUtilServer.downloadTextNormalization(apiServer, apiKey, configId): Promise<TextNormalizationDownload>;
+```
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `apiServer` | Yes | API Server URL |
+| `apiKey` | Yes | API Key |
+| `configId` | Yes | TextNormalizationConfig `textnormalizationconfig_id` |
+
+**Returns:** `TextNormalizationDownload` object
+
+```typescript
+interface TextNormalizationDownload {
+  config_id: string;
+  config_name: string;
+  file_url: string;   // Pre-signed URL; use Azure Blob Storage ETag for caching
+}
+```
+
+```typescript
+import { getTextNormalization } from "perso-interactive-sdk-web/client";
+
+const download = await getTextNormalization(
+  apiServer,
+  apiKey,
+  "<textnormalizationconfig_id>"
+);
+// download.file_url → pre-signed URL to the CSV ruleset
+```
+
 ### Get all settings
 
 ```typescript
@@ -215,7 +285,8 @@ function getAllSettings(apiServer: string, apiKey: string): Promise<any>;
   "prompts": JSON, // result of getPrompts
   "documents": JSON, // result of getDocuments
   "backgroundImages": JSON, // result of getBackgroundImages
-  "mcpServers": JSON // result of getMcpServers
+  "mcpServers": JSON, // result of getMcpServers
+  "textNormalizations": JSON // result of getTextNormalizations
 }
 ```
 
@@ -224,6 +295,14 @@ function getAllSettings(apiServer: string, apiKey: string): Promise<any>;
 > **Server-side only**: This function requires your API key. Always call it from your server to keep the key secret. Pass only the returned `sessionId` to the browser.
 
 ```typescript
+// Overload 1: Create from a SessionTemplate ID (recommended)
+function createSessionId(
+  apiServer: string,
+  apiKey: string,
+  sessionTemplateId: string
+): Promise<string>;
+
+// Overload 2: Create from explicit params
 function createSessionId(
   apiServer: string,
   apiKey: string,
@@ -240,9 +319,22 @@ function createSessionId(
     llm_type?: string;
     tts_type?: string;
     stt_type?: string;
+    text_normalization_config?: string;
+    text_normalization_locale?: string | null;
   }
 ): Promise<string>;
 ```
+
+**Overload 1 — `sessionTemplateId`**: Pass a SessionTemplate ID (string) as the third argument. The function internally calls `getSessionTemplate` to resolve the template and maps its fields to the request body. This is the simplest way to create a session when you have pre-configured templates.
+
+- Throws if `model_style.platform_type` is not `"webrtc"`.
+
+```typescript
+// Example: create session from template
+const sessionId = await createSessionId(apiServer, apiKey, "tmpl-abc-123");
+```
+
+**Overload 2 — `params`**: Pass an object with explicit runtime options (original behavior).
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
@@ -256,6 +348,8 @@ function createSessionId(
 | `params.stt_type` | No | STT `name` |
 | `params.document` | No | Document `document_id` |
 | `params.background_image` | No | BackgroundImage `backgroundimage_id` |
+| `params.text_normalization_config` | No | TextNormalizationConfig `textnormalizationconfig_id` |
+| `params.text_normalization_locale` | No | Locale for text normalization (e.g., `"ko"`, `"en"`). Pass `null` to explicitly disable. |
 | `params.mcp_servers` | No | MCPServer `mcpserver_id` array |
 | `params.padding_left` | No | AI human horizontal position (A number between -1.0 and 1.0, default 0.0) |
 | `params.padding_top` | No | AI human vertical position (A number between 0.0 and 1.0, default 0.0) |
@@ -297,7 +391,19 @@ app.post("/api/session", async (req, res) => {
       llm_type: "<llm_name>",
       tts_type: "<tts_name>",
       stt_type: "<stt_name>",
+      // text_normalization_config: "<textnormalizationconfig_id>", // optional
     });
+    res.json({ sessionId });
+  } catch (error) {
+    console.error("Session creation failed:", error);
+    res.status(500).json({ error: "Failed to create session" });
+  }
+});
+
+// Using a SessionTemplate (simpler — no need to specify individual options)
+app.post("/api/session-from-template", async (req, res) => {
+  try {
+    const sessionId = await createSessionId(API_SERVER, API_KEY, "<sessiontemplate_id>");
     res.json({ sessionId });
   } catch (error) {
     console.error("Session creation failed:", error);
@@ -328,6 +434,7 @@ const sessionId = await createSessionId(apiServer, apiKey, {
   llm_type: "<llm_name>",
   tts_type: "<tts_name>",
   stt_type: "<stt_name>",
+  // text_normalization_config: "<textnormalizationconfig_id>", // optional
 });
 
 const session = await createSession(apiServer, sessionId, 1920, 1080, []);
@@ -365,6 +472,181 @@ function getIntroMessage(
 import { getIntroMessage } from "perso-interactive-sdk-web/server";
 
 const intro = await getIntroMessage(apiServer, apiKey, "<prompt_id>");
+```
+
+### Get Session Template list
+
+> **Server-side only**: This function requires your API key.
+
+```typescript
+function getSessionTemplates(
+  apiServer: string,
+  apiKey: string
+): Promise<SessionTemplate[]>;
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `apiServer` | API Server URL |
+| `apiKey` | API Key |
+
+**Returns:** Array of SessionTemplate objects
+
+```JSON
+[
+  {
+    "sessiontemplate_id": string,
+    "name": string,
+    "description": string | null,
+    "prompt": {
+      "prompt_id": string,
+      "name": string,
+      "description"?: string,
+      "system_prompt": string,
+      "require_document"?: boolean,
+      "intro_message"?: string
+    },
+    "capability": [
+      {
+        "name": string,       // "LLM" | "TTS" | "STT" | "STF_ONPREMISE" | "STF_WEBRTC"
+        "description"?: string | null
+      }
+    ],
+    "document": {
+      "document_id": string,
+      "title": string,
+      "file": string,
+      "description"?: string,
+      "search_count"?: number,
+      "ef_search"?: number | null,
+      "processed": boolean,
+      "processed_v2": boolean,
+      "created_at": string,
+      "updated_at": string
+    } | null,
+    "llm_type": {
+      "name": string,
+      "service"?: string
+    },
+    "tts_type": {
+      "name": string,
+      "streamable"?: boolean,
+      "service": string,
+      "model"?: string | null,
+      "voice"?: string | null,
+      "voice_settings"?: object | null,
+      "style"?: string | null,
+      "voice_extra_data"?: object | null
+    },
+    "stt_type": {
+      "name": string,
+      "service": string,
+      "options"?: object | null
+    },
+    "text_normalization_config": {
+      "textnormalizationconfig_id": string,
+      "name": string,
+      "created_at": string
+    } | null,
+    "text_normalization_locale": string | null,
+    "model_style": {
+      "name": string,
+      "model": string,
+      "model_file"?: string | null,
+      "model_files": [{ "name": string, "file"?: string | null }],
+      "style": string,
+      "file"?: string | null,
+      "platform_type"?: string,
+      "configs": [{ "modelstyleconfig_id": string, "key": string, "value": string }]
+    },
+    "background_image": {
+      "backgroundimage_id": string,
+      "title": string,
+      "image": string,
+      "created_at": string
+    } | null,
+    "agent": string | null,
+    "padding_left": number | null,
+    "padding_top": number | null,
+    "padding_height": number | null,
+    "extra_data": object | null,
+    "mcp_servers": [
+      {
+        "mcpserver_id": string,
+        "name": string,
+        "description"?: string,
+        "url": string,
+        "transport_protocol"?: string,
+        "server_timeout_sec"?: number,
+        "extra_data"?: object | null
+      }
+    ],
+    "created_at": string,
+    "last_used_at": string | null
+  }
+]
+```
+
+### Get Session Template
+
+> **Server-side only**: This function requires your API key.
+
+```typescript
+function getSessionTemplate(
+  apiServer: string,
+  apiKey: string,
+  sessionTemplateId: string
+): Promise<SessionTemplate>;
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `apiServer` | API Server URL |
+| `apiKey` | API Key |
+| `sessionTemplateId` | Session Template ID |
+
+**Returns:** A single SessionTemplate object (same schema as array element above)
+
+### Make TTS
+
+```typescript
+function makeTTS(
+  apiServer: string,
+  params: {
+    sessionId: string;
+    text: string;
+    locale?: string;
+    output_format?: string;
+  }
+): Promise<{ audio: string }>;
+```
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `apiServer` | Yes | API Server URL |
+| `params.sessionId` | Yes | Active session ID |
+| `params.text` | Yes | Text to synthesize |
+| `params.locale` | No | Language/locale code for TTS (e.g., `"ko"`, `"en"`) |
+| `params.output_format` | No | Audio output format (e.g., `"wav"`) |
+
+**Returns:** Object with Base64-encoded audio string
+
+```JSON
+{
+  "audio": string
+}
+```
+
+```typescript
+import { makeTTS } from "perso-interactive-sdk-web/client";
+
+const result = await makeTTS(apiServer, {
+  sessionId: "<session_id>",
+  text: "Hello, world!",
+  locale: "en",         // optional
+  output_format: "wav", // optional
+});
+// result.audio contains Base64-encoded audio data
 ```
 
 ### PersoUtilServer
@@ -628,7 +910,7 @@ When speaking begins, ChatState.SPEAKING is set in 'Chat states'.
 ```typescript
 function processTTS(
   message: string,
-  options?: { resample?: boolean }
+  options?: { resample?: boolean; locale?: string; output_format?: string }
 ): Promise<Blob | undefined>;
 ```
 
@@ -636,7 +918,9 @@ function processTTS(
 |--------------------|----------|--------------------------------------------------------------------|
 | `message`          | Yes      | Text to convert to speech audio                                    |
 | `options`          | No       | Options object                                                     |
-| `options.resample` | No       | Whether to resample audio to TTS target sample rate (default: `true`) |
+| `options.resample` | No       | Whether to resample audio to TTS target sample rate (default: `false`) |
+| `options.locale` | No       | Language locale code for TTS (e.g., `'ko'`, `'en'`). Passed to the TTS API when specified. |
+| `options.output_format` | No       | Audio output format (e.g., `'wav'`, `'mp3'`). Passed to the TTS API when specified. |
 
 **Returns:** `Blob` containing audio data (audio/wav), or `undefined` if the message is empty after filtering.
 
@@ -656,6 +940,13 @@ if (audioBlob) {
   // Remember to revoke the URL when done to prevent memory leaks
   audio.onended = () => URL.revokeObjectURL(audioUrl);
 }
+
+// With locale and output format
+const audioBlob = await session.processTTS("Hello, world!", {
+  resample: false,
+  locale: "en",
+  output_format: "mp3"
+});
 ```
 
 **Error handling:**

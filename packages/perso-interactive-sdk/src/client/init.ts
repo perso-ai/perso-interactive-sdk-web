@@ -1,4 +1,5 @@
 import { ApiError, PersoUtil, SessionCapabilityName } from '../shared';
+import type { SessionTemplate } from '../shared/types';
 
 type CreateSessionIdBody = {
 	using_stf_webrtc: boolean;
@@ -13,6 +14,8 @@ type CreateSessionIdBody = {
 	llm_type?: string;
 	tts_type?: string;
 	stt_type?: string;
+	text_normalization_config?: string;
+	text_normalization_locale?: string | null;
 };
 
 /**
@@ -23,29 +26,37 @@ type CreateSessionIdBody = {
  * client-side code, the API key will be exposed to the browser. For production
  * use, prefer creating session IDs server-side using `perso-interactive-sdk-web/server`.
  *
+ * @overload Creates a session from a SessionTemplate ID. Internally calls
+ * `getSessionTemplate` to resolve the template and maps it to the request body.
  * @param apiServer Perso API server URL.
  * @param apiKey API key used for authentication.
- * @param params {
- *   using_stf_webrtc: boolean;
- *   llm_type?: string;
- *   tts_type?: string;
- *   stt_type?: string;
- *   model_style: string;
- *   prompt: string;
- *   document?: string;
- *   background_image?: string;
- *   mcp_servers?: Array<string>;
- *   padding_left?: number;
- *   padding_top?: number;
- *   padding_height?: number;
- * }
+ * @param sessionTemplateId SessionTemplate ID to resolve configuration from.
+ * @returns Session ID returned by the server.
+ * @throws {Error} If the template's `model_style.platform_type` is not `"webrtc"`.
+ * @throws {ApiError} If the template ID is invalid or API call fails.
+ */
+export async function createSessionId(
+	apiServer: string,
+	apiKey: string,
+	sessionTemplateId: string
+): Promise<string>;
+/**
+ * @overload Creates a session from explicit runtime options.
+ * @param apiServer Perso API server URL.
+ * @param apiKey API key used for authentication.
+ * @param params Runtime options for the session.
  * @returns Session ID returned by the server.
  */
-export const createSessionId = async (
+export async function createSessionId(
 	apiServer: string,
 	apiKey: string,
 	params: CreateSessionIdBody
-): Promise<string> => {
+): Promise<string>;
+export async function createSessionId(
+	apiServer: string,
+	apiKey: string,
+	paramsOrTemplateId: CreateSessionIdBody | string
+): Promise<string> {
 	// 브라우저 환경에서 API 키 노출 경고
 	if (typeof window !== 'undefined') {
 		console.warn(
@@ -54,6 +65,22 @@ export const createSessionId = async (
 				"Use server-side session creation with 'perso-interactive-sdk-web/server' instead. " +
 				'See: https://github.com/perso-ai/perso-interactive-sdk-web#server-side'
 		);
+	}
+
+	let params: CreateSessionIdBody;
+
+	if (typeof paramsOrTemplateId === 'string') {
+		const template = await PersoUtil.getSessionTemplate(apiServer, apiKey, paramsOrTemplateId);
+
+		if (template.model_style.platform_type !== 'webrtc') {
+			throw new Error(
+				`SessionTemplate "${paramsOrTemplateId}" uses platform_type "${template.model_style.platform_type}", but only "webrtc" is supported`
+			);
+		}
+
+		params = sessionTemplateToParams(template);
+	} else {
+		params = paramsOrTemplateId;
 	}
 
 	const body: CreateSessionIdBody & {
@@ -88,9 +115,33 @@ export const createSessionId = async (
 		method: 'POST'
 	});
 
-	let json = await PersoUtil.parseJson(response);
+	const json = await PersoUtil.parseJson(response);
 	return json.session_id as string;
-};
+}
+
+function sessionTemplateToParams(template: SessionTemplate): CreateSessionIdBody {
+	const hasCapability = (name: SessionCapabilityName) =>
+		template.capability.some((c) => c.name === name);
+
+	return {
+		using_stf_webrtc: hasCapability(SessionCapabilityName.STF_WEBRTC),
+		model_style: template.model_style.name,
+		prompt: template.prompt.prompt_id,
+		document: template.document?.document_id,
+		background_image: template.background_image?.backgroundimage_id,
+		mcp_servers: template.mcp_servers.length
+			? template.mcp_servers.map((m) => m.mcpserver_id)
+			: undefined,
+		llm_type: hasCapability(SessionCapabilityName.LLM) ? template.llm_type.name : undefined,
+		tts_type: hasCapability(SessionCapabilityName.TTS) ? template.tts_type.name : undefined,
+		stt_type: hasCapability(SessionCapabilityName.STT) ? template.stt_type.name : undefined,
+		text_normalization_config: template.text_normalization_config?.textnormalizationconfig_id,
+		text_normalization_locale: template.text_normalization_locale,
+		padding_left: template.padding_left ?? undefined,
+		padding_top: template.padding_top ?? undefined,
+		padding_height: template.padding_height ?? undefined
+	};
+}
 
 type PromptMetadata = {
 	prompt_id: string;

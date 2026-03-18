@@ -35,9 +35,13 @@ export {
 	getPrompts,
 	getDocuments,
 	getMcpServers,
+	getSessionTemplates,
+	getTextNormalizations,
+	getTextNormalization,
 	getAllSettings,
 	createSession,
 	getSessionInfo,
+	makeTTS,
 	// Session
 	ChatTool,
 	ChatState,
@@ -52,7 +56,21 @@ export {
 	// Audio recording
 	WavRecorder,
 	createWavRecorder,
-	type WavRecorderOptions
+	type WavRecorderOptions,
+	type TextNormalizationDownload,
+	type SessionTemplate,
+	type Prompt,
+	type LLMType,
+	type TTSType,
+	type STTType,
+	type ModelStyle,
+	type BackgroundImage,
+	type Document,
+	type MCPServer,
+	type SessionCapability,
+	type TextNormalizationConfig,
+	type ModelStyleConfig,
+	type AIHumanModelFile
 } from './PersoInteractive';
 
 // Client-side session creation (exposes API key - use with caution)
