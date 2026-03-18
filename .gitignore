@@ -35,3 +35,6 @@ vite.config.ts.timestamp-*
 /apps/svelte/dist
 /apps/typescript/dist
 /apps/sdk-tester/dist
+/apps/sdk-tester/api/dist
+/apps/sdk-tester/api/node_modules
+/apps/sdk-tester/api/local.settings.json

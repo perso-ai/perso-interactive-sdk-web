@@ -250,9 +250,9 @@ export class Session {
 
 	async processTTS(
 		message: string,
-		options: { resample?: boolean } = {}
+		options: { resample?: boolean; locale?: string; output_format?: string } = {}
 	): Promise<Blob | undefined> {
-		const { resample = true } = options;
+		const { resample = false, locale, output_format } = options;
 		const filteredMessage = this.removeEmoji(message).trim();
 		if (filteredMessage.length === 0) return;
 		this.pipelineSuppressed = false;
@@ -261,10 +261,13 @@ export class Session {
 
 		this.setChatState(ChatState.TTS, null);
 		try {
-			const { audio } = await PersoUtil.makeTTS(this.apiServer, {
+			const params = {
 				sessionId: this.sessionId,
-				text: textForTTS
-			});
+				text: textForTTS,
+				...(locale && { locale }),
+				...(output_format && { output_format })
+			};
+			const { audio } = await PersoUtil.makeTTS(this.apiServer, params);
 			if (this.pipelineSuppressed) return undefined;
 			const ttsResult = await decodeTTSAudio(audio, resample);
 			return ttsResult;

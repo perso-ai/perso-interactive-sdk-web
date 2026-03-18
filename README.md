@@ -58,17 +58,13 @@ pnpm add perso-interactive-sdk-web
 **Client-side (browser):**
 
 ```ts
-import {
-  createSession,
-  ChatTool,
-  ChatState,
-} from "perso-interactive-sdk-web/client";
+import { createSession, ChatTool, ChatState } from 'perso-interactive-sdk-web/client';
 ```
 
 **Server-side (Node.js/SvelteKit/Next.js):**
 
 ```ts
-import { createSessionId, getIntroMessage } from "perso-interactive-sdk-web/server";
+import { createSessionId, getIntroMessage } from 'perso-interactive-sdk-web/server';
 ```
 
 ## How to run
@@ -120,10 +116,10 @@ import { createSessionId, getIntroMessage } from "perso-interactive-sdk-web/serv
 
   ```ts
   // .env
-  PERSO_INTERACTIVE_API_KEY = "YOUR API KEY";
+  PERSO_INTERACTIVE_API_KEY = 'YOUR API KEY';
   // or
   // constant.ts
-  export const persoInteractiveApiKey = "YOUR API KEY";
+  export const persoInteractiveApiKey = 'YOUR API KEY';
   ```
 
 - **apps/nextjs (`@perso-interactive-sdk-web/app-nextjs`)**
@@ -131,7 +127,7 @@ import { createSessionId, getIntroMessage } from "perso-interactive-sdk-web/serv
 
   ```ts
   // .env.local
-  PERSO_INTERACTIVE_API_KEY = "YOUR API KEY";
+  PERSO_INTERACTIVE_API_KEY = 'YOUR API KEY';
   ```
 
 - **apps/vanilla (`@perso-interactive-sdk-web-web/app-vanilla`)**
@@ -155,26 +151,26 @@ import { createSessionId, getIntroMessage } from "perso-interactive-sdk-web/serv
 
 ```ts
 // Import from server subpath
-import { createSessionId, getIntroMessage } from "perso-interactive-sdk-web/server";
+import { createSessionId, getIntroMessage } from 'perso-interactive-sdk-web/server';
 
 // 1. Initialize SDK
-const apiServerUrl = "https://live-api.perso.ai";
-const apiKey = "YOUR API KEY";
+const apiServerUrl = 'https://live-api.perso.ai';
+const apiKey = 'YOUR API KEY';
 
 // 2. Create session id with configuration
 const sessionId = await createSessionId(apiServerUrl, apiKey, {
-  using_stf_webrtc: true,
-  model_style, // Selected model style
-  prompt, // Selected prompt
-  llm_type, // Selected LLM
-  tts_type, // Selected TTS
-  stt_type, // Selected STT
-  document, // Selected document
-  background_image, // Selected background
-  mcp_servers, // Selected MCP servers
-  padding_left,
-  padding_top,
-  padding_height,
+	using_stf_webrtc: true,
+	model_style, // Selected model style
+	prompt, // Selected prompt
+	llm_type, // Selected LLM
+	tts_type, // Selected TTS
+	stt_type, // Selected STT
+	document, // Selected document
+	background_image, // Selected background
+	mcp_servers, // Selected MCP servers
+	padding_left,
+	padding_top,
+	padding_height
 });
 
 // 3. Get intro message (optional)
@@ -187,15 +183,15 @@ return { sessionId, introMessage };
 
 ```ts
 // Import from client subpath
-import { createSession } from "perso-interactive-sdk-web/client";
+import { createSession } from 'perso-interactive-sdk-web/client';
 
 // Create WebRTC session
 const session = await createSession(
-  apiServerUrl,
-  sessionId,
-  chatbotWidth,
-  chatbotHeight,
-  clientTools ?? [] // Refer to the following reference
+	apiServerUrl,
+	sessionId,
+	chatbotWidth,
+	chatbotHeight,
+	clientTools ?? [] // Refer to the following reference
 );
 ```
 
@@ -208,39 +204,39 @@ const session = await createSession(
 ```ts
 // Import from client subpath
 import {
-  createSessionId,
-  createSession,
-  ChatTool,
-  ChatState,
-} from "perso-interactive-sdk-web/client";
+	createSessionId,
+	createSession,
+	ChatTool,
+	ChatState
+} from 'perso-interactive-sdk-web/client';
 
 // 1. Initialize SDK
-const apiServerUrl = "https://live-api.perso.ai";
-const apiKey = "YOUR API KEY";
+const apiServerUrl = 'https://live-api.perso.ai';
+const apiKey = 'YOUR API KEY';
 
 // 2. Fetch features and get session id
 const sessionId = await createSessionId(apiServerUrl, apiKey, {
-  using_stf_webrtc: true,
-  model_style, // Selected model style
-  prompt, // Selected prompt
-  llm_type, // Selected LLM
-  tts_type, // Selected TTS
-  stt_type, // Selected STT
-  document, // Selected document
-  background_image, // Selected background
-  mcp_servers, // Selected MCP servers
-  padding_left,
-  padding_top,
-  padding_height,
+	using_stf_webrtc: true,
+	model_style, // Selected model style
+	prompt, // Selected prompt
+	llm_type, // Selected LLM
+	tts_type, // Selected TTS
+	stt_type, // Selected STT
+	document, // Selected document
+	background_image, // Selected background
+	mcp_servers, // Selected MCP servers
+	padding_left,
+	padding_top,
+	padding_height
 });
 
 // 3. Create WebRTC Session
 const session = await createSession(
-  apiServerUrl,
-  sessionId,
-  chatbotWidth,
-  chatbotHeight,
-  clientTools ?? [] // Refer to the following reference
+	apiServerUrl,
+	sessionId,
+	chatbotWidth,
+	chatbotHeight,
+	clientTools ?? [] // Refer to the following reference
 );
 ```
 

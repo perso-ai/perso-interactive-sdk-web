@@ -17,5 +17,6 @@
  * ```
  */
 
-export { createSessionId, getIntroMessage } from './init';
+export { createSessionId, getIntroMessage, getSessionTemplates, getSessionTemplate } from './init';
+export type { SessionTemplate } from '../shared/types';
 export { PersoUtil as PersoUtilServer, ApiError } from '../shared';

@@ -1,4 +1,21 @@
 import { PersoUtil } from '../shared';
+import type { TextNormalizationDownload } from '../shared/perso_util';
+export type { TextNormalizationDownload } from '../shared/perso_util';
+export type {
+	SessionTemplate,
+	Prompt,
+	LLMType,
+	TTSType,
+	STTType,
+	ModelStyle,
+	BackgroundImage,
+	Document,
+	MCPServer,
+	SessionCapability,
+	TextNormalizationConfig,
+	ModelStyleConfig,
+	AIHumanModelFile
+} from '../shared/types';
 import {
 	type Chat,
 	ChatState,
@@ -100,8 +117,37 @@ export async function getDocuments(apiServer: string, apiKey: string) {
  * @param apiServer Perso API server URL.
  * @param apiKey API key used for authentication.
  */
+/**
+ * Retrieves available text normalization options.
+ * @param apiServer Perso API server URL.
+ * @param apiKey API key used for authentication.
+ */
+export async function getTextNormalizations(apiServer: string, apiKey: string) {
+	return await PersoUtil.getTextNormalizations(apiServer, apiKey);
+}
+
+/**
+ * Downloads the ruleset data file for a Text Normalization Config.
+ * Returns a pre-signed Blob Storage URL for the CSV file.
+ * @param apiServer Perso API server URL.
+ * @param apiKey API key used for authentication.
+ * @param configId Text Normalization Config ID.
+ */
+export async function getTextNormalization(apiServer: string, apiKey: string, configId: string): Promise<TextNormalizationDownload> {
+	return await PersoUtil.downloadTextNormalization(apiServer, apiKey, configId);
+}
+
 export async function getMcpServers(apiServer: string, apiKey: string) {
 	return await PersoUtil.getMcpServers(apiServer, apiKey);
+}
+
+/**
+ * Retrieves the list of session templates.
+ * @param apiServer Perso API server URL.
+ * @param apiKey API key used for authentication.
+ */
+export async function getSessionTemplates(apiServer: string, apiKey: string) {
+	return await PersoUtil.getSessionTemplates(apiServer, apiKey);
 }
 
 /**
@@ -112,14 +158,18 @@ export async function getMcpServers(apiServer: string, apiKey: string) {
  * @returns Object containing arrays for LLMs, TTS/STT types, model styles, etc.
  */
 export async function getAllSettings(apiServer: string, apiKey: string) {
-	const llms = await getLLMs(apiServer, apiKey);
-	const modelStyles = await getModelStyles(apiServer, apiKey);
-	const backgroundImages = await getBackgroundImages(apiServer, apiKey);
-	const ttsTypes = await getTTSs(apiServer, apiKey);
-	const sttTypes = await getSTTs(apiServer, apiKey);
-	const prompts = await getPrompts(apiServer, apiKey);
-	const documents = await getDocuments(apiServer, apiKey);
-	const mcpServers = await getMcpServers(apiServer, apiKey);
+	const [llms, ttsTypes, sttTypes, modelStyles, backgroundImages, prompts, documents, mcpServers, textNormalizations] =
+		await Promise.all([
+			getLLMs(apiServer, apiKey),
+			getTTSs(apiServer, apiKey),
+			getSTTs(apiServer, apiKey),
+			getModelStyles(apiServer, apiKey),
+			getBackgroundImages(apiServer, apiKey),
+			getPrompts(apiServer, apiKey),
+			getDocuments(apiServer, apiKey),
+			getMcpServers(apiServer, apiKey),
+			getTextNormalizations(apiServer, apiKey).catch(() => [])
+		]);
 
 	return {
 		llms,
@@ -129,7 +179,8 @@ export async function getAllSettings(apiServer: string, apiKey: string) {
 		backgroundImages,
 		prompts,
 		documents,
-		mcpServers
+		mcpServers,
+		textNormalizations
 	};
 }
 
@@ -175,6 +226,20 @@ export async function createSession(
  * @param apiServer Perso API server URL.
  * @param sessionId Session id to inspect.
  */
+/**
+ * Sends text to the TTS API and returns Base64-encoded audio.
+ * @param apiServer Perso API server URL.
+ * @param params Session ID and text to synthesize.
+ * @returns Object with Base64 audio string.
+ */
+export async function makeTTS(
+	apiServer: string,
+	params: { sessionId: string; text: string; locale?: string; output_format?: string }
+): Promise<{ audio: string }> {
+	return await PersoUtil.makeTTS(apiServer, params);
+}
+
 export async function getSessionInfo(apiServer: string, sessionId: string) {
 	return await PersoUtil.getSessionInfo(apiServer, sessionId);
 }
+
