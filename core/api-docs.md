@@ -543,12 +543,12 @@ function getSessionTemplates(
       "service": string,
       "options"?: object | null
     },
-    "text_normalization_config": {
+    "text_normalization_config"?: {
       "textnormalizationconfig_id": string,
       "name": string,
       "created_at": string
     } | null,
-    "text_normalization_locale": string | null,
+    "text_normalization_locale"?: string | null,
     "model_style": {
       "name": string,
       "model": string,
@@ -570,7 +570,7 @@ function getSessionTemplates(
     "padding_top": number | null,
     "padding_height": number | null,
     "extra_data": object | null,
-    "mcp_servers": [
+    "mcp_servers"?: [
       {
         "mcpserver_id": string,
         "name": string,
