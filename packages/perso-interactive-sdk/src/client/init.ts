@@ -129,9 +129,9 @@ function sessionTemplateToParams(template: SessionTemplate): CreateSessionIdBody
 		prompt: template.prompt.prompt_id,
 		document: template.document?.document_id,
 		background_image: template.background_image?.backgroundimage_id,
-		mcp_servers: template.mcp_servers.length
+		mcp_servers: template.mcp_servers?.length
 			? template.mcp_servers.map((m) => m.mcpserver_id)
-			: undefined,
+			: [],
 		llm_type: hasCapability(SessionCapabilityName.LLM) ? template.llm_type.name : undefined,
 		tts_type: hasCapability(SessionCapabilityName.TTS) ? template.tts_type.name : undefined,
 		stt_type: hasCapability(SessionCapabilityName.STT) ? template.stt_type.name : undefined,

@@ -104,8 +104,8 @@ export interface SessionTemplate {
 	llm_type: LLMType;
 	tts_type: TTSType;
 	stt_type: STTType;
-	text_normalization_config: TextNormalizationConfig | null;
-	text_normalization_locale: string | null;
+	text_normalization_config?: TextNormalizationConfig | null;
+	text_normalization_locale?: string | null;
 	model_style: ModelStyle;
 	background_image: BackgroundImage | null;
 	agent: string | null;
@@ -113,7 +113,7 @@ export interface SessionTemplate {
 	padding_top: number | null;
 	padding_height: number | null;
 	extra_data: unknown | null;
-	mcp_servers: MCPServer[];
+	mcp_servers?: MCPServer[];
 	created_at: string;
 	last_used_at: string | null;
 }

@@ -96,7 +96,6 @@ export class Perso extends EventTarget {
 
 		if (!hasSTF) {
 			await PersoUtil.sessionEvent(apiServer, sessionId, SessionEvent.SESSION_START);
-
 			return null;
 		}
 

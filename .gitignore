@@ -26,6 +26,7 @@ vite.config.ts.timestamp-*
 
 .sisyphus/
 .omc
+.superset/
 
 /packages/perso-interactive-sdk/src/_session.ts
 
