@@ -344,6 +344,7 @@ For direct browser usage via `<script>` tag without a bundler. The SDK exposes a
 | `getSessionId()`                    | Get session ID                                 |
 | `clearBuffer()`                     | Stop AI human speaking                         |
 | `changeSize(width, height)`         | Resize the avatar canvas                       |
+| `logSessionEvent(detail?)`          | Send a SESSION_LOG event (string or object)    |
 | `stopSession()`                     | Close the session                              |
 | `subscribeChatStates(callback)`     | Subscribe to state changes                     |
 | `subscribeChatLog(callback)`        | Subscribe to chat log updates                  |

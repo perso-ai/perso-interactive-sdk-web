@@ -411,14 +411,14 @@ export class PersoUtil {
 		return await this.parseJson(response);
 	}
 
-	static async sessionEvent(apiServer: string, sessionId: string, sessionEvent: SessionEvent) {
+	static async sessionEvent(apiServer: string, sessionId: string, sessionEvent: SessionEvent, detail: string = '') {
 		const response = await fetch(`${apiServer}/api/v1/session/${sessionId}/event/create/`, {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json'
 			},
 			body: JSON.stringify({
-				detail: '',
+				detail,
 				event: sessionEvent
 			})
 		});
