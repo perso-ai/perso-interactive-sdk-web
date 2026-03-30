@@ -1285,6 +1285,31 @@ function setErrorHandler(callback: (error: Error) => void): () => void;
 
 **Returns:** Function to remove the error handler
 
+### Log session event
+
+```typescript
+function logSessionEvent(detail?: string | Record<string, unknown>): Promise<void>;
+```
+
+Sends a `SESSION_LOG` event for the current session. Use this to record custom analytics or debugging information.
+
+| Parameter | Description |
+|-----------|-------------|
+| `detail` | Optional event description. Strings are sent as-is; objects are JSON-stringified. |
+
+**Usage:**
+
+```typescript
+// String detail
+await session.logSessionEvent("user clicked submit button");
+
+// Object detail (JSON-stringified internally)
+await session.logSessionEvent({ action: "button_click", target: "submit" });
+
+// No detail
+await session.logSessionEvent();
+```
+
 ### Stop session
 
 ```typescript

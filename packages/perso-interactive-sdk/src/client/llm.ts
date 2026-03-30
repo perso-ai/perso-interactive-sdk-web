@@ -1,5 +1,5 @@
 import { ChatState, ChatTool, type LLMStreamChunk, type ProcessLLMOptions } from './types';
-import { ApiError, LLMError, LLMStreamingResponseError, PersoUtil } from '../shared';
+import { ApiError, LLMError, LLMStreamingResponseError, PersoUtil, removeEmoji } from '../shared';
 
 /** Maximum number of tool follow-up rounds before aborting to prevent infinite loops. */
 const MAX_TOOL_ROUNDS = 10;
@@ -265,9 +265,10 @@ export class LlmProcessor {
 				}
 
 				if (parsedMessage.type === 'message') {
-					contents += parsedMessage.content;
-					state.message += parsedMessage.content;
-					state.allChunks.push(parsedMessage.content);
+					const filtered = removeEmoji(parsedMessage.content);
+					contents += filtered;
+					state.message += filtered;
+					state.allChunks.push(filtered);
 					continue;
 				}
 
@@ -334,9 +335,10 @@ export class LlmProcessor {
 			}
 
 			if (parsedMessage.type === 'message') {
-				contents += parsedMessage.content;
-				state.message += parsedMessage.content;
-				state.allChunks.push(parsedMessage.content);
+				const filtered = removeEmoji(parsedMessage.content);
+				contents += filtered;
+				state.message += filtered;
+				state.allChunks.push(filtered);
 			} else if (parsedMessage.type === 'tool_call' && parsedMessage.tool_calls != null) {
 				if (contents.length > 0) {
 					state.newMessageHistory.push({

@@ -1,15 +1,15 @@
-import emojiRegex from 'emoji-regex';
 import {
 	ApiError,
 	LLMError,
 	LLMStreamingResponseError,
 	PersoUtil,
-	SessionEvent,
 	STTError,
 	TTSError,
 	TTSDecodeError,
-	decodeTTSAudio
+	decodeTTSAudio,
+	removeEmoji
 } from '../shared';
+import { SessionEvent } from '../shared/perso_util';
 import { LlmProcessor } from './llm';
 import {
 	type Chat,
@@ -51,8 +51,6 @@ export class Session {
 		[ChatState.SPEAKING, 0],
 		[ChatState.TTS, 0]
 	]);
-
-	private emojiRegex: RegExp = emojiRegex();
 
 	private sttRecorder: WavRecorder | null = null;
 	private sttTimeoutHandle: ReturnType<typeof setTimeout> | null = null;
@@ -253,7 +251,7 @@ export class Session {
 		options: { resample?: boolean; locale?: string; output_format?: string } = {}
 	): Promise<Blob | undefined> {
 		const { resample = false, locale, output_format } = options;
-		const filteredMessage = this.removeEmoji(message).trim();
+		const filteredMessage = removeEmoji(message).trim();
 		if (filteredMessage.length === 0) return;
 		this.pipelineSuppressed = false;
 
@@ -679,7 +677,7 @@ export class Session {
 				}
 
 				if (message.type === 'message') {
-					contents += message.content;
+					contents += removeEmoji(message.content);
 					this.processTTSTFInternal(message.content);
 
 					continue;
@@ -817,7 +815,7 @@ export class Session {
 	 * @param message Assistant message to speak aloud.
 	 */
 	private processTTSTFInternal(message: string) {
-		const filteredMessage = this.removeEmoji(message).trim();
+		const filteredMessage = removeEmoji(message).trim();
 		if (filteredMessage.length === 0) {
 			return;
 		}
@@ -959,6 +957,15 @@ export class Session {
 	}
 
 	/**
+	 * Sends a SESSION_LOG event for the current session.
+	 * @param detail Optional event description. Strings are sent as-is; objects are JSON-stringified.
+	 */
+	async logSessionEvent(detail?: string | Record<string, unknown>): Promise<void> {
+		const detailStr = typeof detail === 'object' ? JSON.stringify(detail) : detail;
+		await PersoUtil.sessionEvent(this.apiServer, this.sessionId, SessionEvent.SESSION_LOG, detailStr);
+	}
+
+	/**
 	 * Emits an error event for UI subscribers.
 	 */
 	private setError(error: Error) {
@@ -1005,14 +1012,6 @@ export class Session {
 		}
 	}
 
-	/**
-	 * Strips emoji characters that TTSTF may not render correctly.
-	 * @param str Text to sanitize.
-	 * @returns Filtered string.
-	 */
-	private removeEmoji(str: string) {
-		return str.replace(this.emojiRegex, '');
-	}
 }
 
 /**
