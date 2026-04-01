@@ -93,9 +93,10 @@ export class Session {
 			}
 		});
 
-		this.startHeartbeat();
-
-		if (!perso) return;
+		if (!perso) {
+			this.startHeartbeat();
+			return;
+		}
 
 		perso.subscribeStatus((event: CustomEvent) => {
 			if (event.detail?.live === false) {

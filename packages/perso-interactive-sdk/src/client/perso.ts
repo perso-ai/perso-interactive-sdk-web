@@ -249,6 +249,8 @@ export class Perso extends EventTarget {
 
 	private static readonly BACKPRESSURE_THRESHOLD = 524288; // 512KB
 
+	private static readonly FILE_TRANSFER_TIMEOUT = 30000; // 30s
+
 	/**
 	 * Sends a file to the remote peer via a dedicated WebRTC data channel.
 	 * The file is chunked and transmitted in binary format. Applies
@@ -260,13 +262,36 @@ export class Perso extends EventTarget {
 	 */
 	sendFile(file: Blob, chunksize = 65536): Promise<string> {
 		return new Promise((resolve, reject) => {
+			let settled = false;
+			const settle = (fn: () => void) => {
+				if (settled) return;
+				settled = true;
+				clearTimeout(timeout);
+				fn();
+			};
+
 			const fileChannel = this.pc.createDataChannel('file', {
 				protocol: 'file'
 			});
 
+			const timeout = setTimeout(() => {
+				settle(() => {
+					fileChannel.close();
+					reject(new Error('File transfer timed out'));
+				});
+			}, Perso.FILE_TRANSFER_TIMEOUT);
+
+			fileChannel.onclose = () => {
+				settle(() => {
+					reject(new Error('File channel closed before transfer completed'));
+				});
+			};
+
 			fileChannel.onerror = (error) => {
-				fileChannel.close();
-				reject(new Error(`File channel error: ${error}`));
+				settle(() => {
+					fileChannel.close();
+					reject(new Error(`File channel error: ${error}`));
+				});
 			};
 
 			fileChannel.addEventListener('message', async (event: MessageEvent) => {
@@ -285,7 +310,9 @@ export class Perso extends EventTarget {
 									};
 									fileChannel.onclose = () => {
 										fileChannel.onbufferedamountlow = null;
-										reject(new Error('File channel closed during transfer'));
+										settle(() => {
+											reject(new Error('File channel closed during transfer'));
+										});
 									};
 									return;
 								}
@@ -297,12 +324,16 @@ export class Perso extends EventTarget {
 
 						sendChunks();
 					} else {
-						fileChannel.close();
-						resolve(event.data);
+						settle(() => {
+							fileChannel.close();
+							resolve(event.data);
+						});
 					}
 				} catch (error) {
-					fileChannel.close();
-					reject(error);
+					settle(() => {
+						fileChannel.close();
+						reject(error instanceof Error ? error : new Error(String(error)));
+					});
 				}
 			});
 		});
