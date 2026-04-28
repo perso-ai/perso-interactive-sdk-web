@@ -129,7 +129,11 @@
 			console.warn('TTS returned no audio for chunk');
 			return;
 		}
-		await currentSession.processSTF(audioBlob, 'wav', chunk);
+		// processTTS returns the raw TTS bytes (no resample by default), so the
+		// blob may be MP3 or WAV depending on what the TTS provider produced.
+		// Hardcoding 'wav' makes the server reject/mis-decode MP3 payloads and
+		// can destabilize the WebRTC session.
+		await currentSession.processSTF(audioBlob, audioBlob.type, chunk);
 	}
 
 	/** Sequential: collects all LLM chunks first, then runs TTS/STF one by one. Simpler flow, useful for debugging. */

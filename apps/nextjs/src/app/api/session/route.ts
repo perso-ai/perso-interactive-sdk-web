@@ -7,24 +7,19 @@ export async function GET() {
 	try {
 		const config = await getConfig();
 
-		const sessionId = await createSessionId(
-			persoInteractiveApiServerUrl,
-			persoInteractiveApiKey,
-			{
-				using_stf_webrtc: true,
-				llm_type: config.llm,
-				tts_type: config.tts,
-				stt_type: config.stt,
-				model_style: config.modelStyle,
-				prompt: config.prompt,
-				document: config.document || undefined,
-				background_image: config.backgroundImage || undefined,
-				mcp_servers: config.mcpServers?.length ? config.mcpServers : undefined,
-				padding_left: config.padding_left,
-				padding_top: config.padding_top,
-				padding_height: config.padding_height
-			}
-		);
+		// TODO(bisect): Restore background_image / mcp_servers / padding_* once
+		// the Next.js-only WebRTC regression is isolated. Match the sdk-tester
+		// PipelineDemoPage payload while debugging — those fields were observed
+		// to differ between the working reference and this demo.
+		const sessionId = await createSessionId(persoInteractiveApiServerUrl, persoInteractiveApiKey, {
+			using_stf_webrtc: true,
+			llm_type: config.llm,
+			tts_type: config.tts,
+			stt_type: config.stt,
+			model_style: config.modelStyle,
+			prompt: config.prompt,
+			document: config.document || undefined
+		});
 
 		let introMessage: string = '';
 		try {

@@ -4,19 +4,39 @@
  *
  * @example
  * ```typescript
- * import { createSessionId, getIntroMessage } from 'perso-interactive-sdk-web/server';
+ * import { createSessionId, getIntroMessage, getAllSettings } from 'perso-interactive-sdk-web/server';
+ *
+ * const settings = await getAllSettings(apiServer, apiKey);
  *
  * const sessionId = await createSessionId(apiServer, apiKey, {
  *   using_stf_webrtc: true,
- *   model_style: 'nathalie-front-full_dress-nodded_loop',
- *   prompt: 'plp-xxx',
- *   llm_type: 'azure-gpt-4o',
- *   tts_type: 'openai-nova',
- *   stt_type: 'gpt-4o-transcribe',
+ *   model_style: settings.modelStyles[0].name,
+ *   prompt: settings.prompts[0].prompt_id,
+ *   llm_type: settings.llms[0].name,
+ *   tts_type: settings.ttsTypes[0].name,
+ *   stt_type: settings.sttTypes[0].name,
  * });
  * ```
  */
 
-export { createSessionId, getIntroMessage, getSessionTemplates, getSessionTemplate } from './init';
+export { createSessionId, getIntroMessage } from './init';
+export {
+	getLLMs,
+	getTTSs,
+	getSTTs,
+	getModelStyles,
+	getBackgroundImages,
+	getPrompts,
+	getDocuments,
+	getMcpServers,
+	getTextNormalizations,
+	getTextNormalization,
+	getSessionTemplates,
+	getSessionTemplate,
+	getAllSettings,
+	makeTTS,
+	getSessionInfo,
+	PersoUtil as PersoUtilServer,
+	ApiError
+} from '../shared';
 export type { SessionTemplate } from '../shared/types';
-export { PersoUtil as PersoUtilServer, ApiError } from '../shared';

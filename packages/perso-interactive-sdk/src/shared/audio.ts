@@ -75,6 +75,36 @@ async function decodeAndResample(
 	}
 }
 
+/**
+ * Normalizes a caller-provided STF audio format hint into the canonical
+ * `'wav' | 'mp3'` value the backend expects.
+ *
+ * Accepts the canonical values, common MIME types, or `undefined`/empty to
+ * derive from the Blob's own `type` field. Falls back to `'wav'` when the
+ * type is missing or unknown.
+ *
+ * @param format Caller-provided format hint (canonical, MIME, or undefined).
+ * @param file Audio blob whose `type` is used as a fallback source of truth.
+ * @returns `'wav'` or `'mp3'`.
+ */
+export function normalizeAudioFormat(format: string | undefined | null, file: Blob): 'wav' | 'mp3' {
+	const canonical = (value: string | undefined | null): 'wav' | 'mp3' | null => {
+		if (!value) return null;
+		// Strip MIME parameters (e.g. `audio/mpeg; codecs=mp3`) before matching.
+		const lower = value.toLowerCase().split(';')[0].trim();
+		if (lower === 'mp3' || lower === 'audio/mpeg' || lower === 'audio/mp3') return 'mp3';
+		if (
+			lower === 'wav' ||
+			lower === 'audio/wav' ||
+			lower === 'audio/x-wav' ||
+			lower === 'audio/wave'
+		)
+			return 'wav';
+		return null;
+	};
+	return canonical(format) ?? canonical(file.type) ?? 'wav';
+}
+
 function detectAudioMimeType(data: ArrayBuffer): string {
 	const view = new Uint8Array(data);
 	if (view.length >= 4) {

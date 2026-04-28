@@ -88,20 +88,16 @@ export default function LiveChat() {
 				setSession(sess);
 				setSessionState(2);
 
-				const unsubscribeChatStates = sess.subscribeChatStates(
-					(states: Set<ChatState>) => {
-						setChatStates(new Set(states));
-					}
-				);
+				const unsubscribeChatStates = sess.subscribeChatStates((states: Set<ChatState>) => {
+					setChatStates(new Set(states));
+				});
 
 				const removeErrorHandler = sess.setErrorHandler((err: Error) => {
 					if (err instanceof LLMError) {
 						const llmError = err as LLMError;
 						if (llmError.underlyingError instanceof ApiError) {
 							alert(llmError.underlyingError);
-						} else if (
-							llmError.underlyingError instanceof LLMStreamingResponseError
-						) {
+						} else if (llmError.underlyingError instanceof LLMStreamingResponseError) {
 							alert(llmError.underlyingError.description);
 						}
 					} else if (err instanceof TTSError) {
@@ -109,9 +105,7 @@ export default function LiveChat() {
 						if (ttsError.underlyingError instanceof ApiError) {
 							alert(`TTS API Error: ${ttsError.underlyingError}`);
 						} else if (ttsError.underlyingError instanceof TTSDecodeError) {
-							alert(
-								`TTS Decode Error: ${ttsError.underlyingError.description}`
-							);
+							alert(`TTS Decode Error: ${ttsError.underlyingError.description}`);
 						}
 					}
 				});
@@ -119,10 +113,7 @@ export default function LiveChat() {
 				const removeOnClose = sess.onClose((manualClosed: boolean) => {
 					if (!manualClosed) {
 						setTimeout(() => {
-							getSessionInfo(
-								apiServerUrlRef.current,
-								sessionIdRef.current
-							)
+							getSessionInfo(apiServerUrlRef.current, sessionIdRef.current)
 								.then((res: { termination_reason?: string }) => {
 									if (res.termination_reason) {
 										alert(res.termination_reason);
@@ -136,11 +127,7 @@ export default function LiveChat() {
 					setSessionState(0);
 				});
 
-				unsubscribesRef.current = [
-					unsubscribeChatStates,
-					removeErrorHandler,
-					removeOnClose,
-				];
+				unsubscribesRef.current = [unsubscribeChatStates, removeErrorHandler, removeOnClose];
 			} catch (e) {
 				if ((e as Error).name === 'AbortError') return;
 				if (!cancelled) {
@@ -160,19 +147,19 @@ export default function LiveChat() {
 		};
 	}, []);
 
-	const onVideoReady = useCallback(
-		(video: HTMLVideoElement) => {
-			sessionRef.current?.setSrc(video);
-		},
-		[]
-	);
+	const onVideoReady = useCallback((video: HTMLVideoElement | null) => {
+		if (video) sessionRef.current?.setSrc(video);
+	}, []);
 
 	function onStopSpeechClicked() {
 		sessionRef.current?.clearBuffer();
 	}
 
+	// Text input path uses the non-streaming processComplete intentionally: the
+	// full LLM response is synthesized at once for a single, deliberate reply.
+	// Voice input (onVoiceChatClicked) still uses processCompleteStreaming.
 	function onMessageSubmit(message: string) {
-		void processCompleteStreaming(message);
+		void processComplete(message);
 	}
 
 	async function synthesizeChunk(currentSession: Session, chunk: string) {
@@ -181,7 +168,11 @@ export default function LiveChat() {
 			console.warn('TTS returned no audio for chunk');
 			return;
 		}
-		await currentSession.processSTF(audioBlob, 'wav', chunk);
+		// processTTS returns the raw TTS bytes (no resample by default), so the
+		// blob may be MP3 or WAV depending on what the TTS provider produced.
+		// Hardcoding 'wav' makes the server reject/mis-decode MP3 payloads and
+		// can destabilize the WebRTC session.
+		await currentSession.processSTF(audioBlob, audioBlob.type, chunk);
 	}
 
 	/** Sequential: collects all LLM chunks first, then runs TTS/STF one by one. Simpler flow, useful for debugging. */
@@ -214,10 +205,7 @@ export default function LiveChat() {
 			}
 
 			const llmResponse = messageChunks.join('');
-			setChatLog((prev) => [
-				...prev,
-				{ text: llmResponse, isUser: false, timestamp: new Date() },
-			]);
+			setChatLog((prev) => [...prev, { text: llmResponse, isUser: false, timestamp: new Date() }]);
 
 			for (const c of messageChunks) {
 				if (c.trim().length === 0) continue;
@@ -264,10 +252,7 @@ export default function LiveChat() {
 			}
 
 			const llmResponse = messageChunks.join('');
-			setChatLog((prev) => [
-				...prev,
-				{ text: llmResponse, isUser: false, timestamp: new Date() },
-			]);
+			setChatLog((prev) => [...prev, { text: llmResponse, isUser: false, timestamp: new Date() }]);
 
 			await queue;
 		} catch (error) {
@@ -398,10 +383,7 @@ export default function LiveChat() {
 					<section className="section">
 						<h2>Chat</h2>
 						<ChatLog chatLog={chatLog} />
-						<ChatInput
-							enableSendButton={available}
-							onMessageSubmit={onMessageSubmit}
-						/>
+						<ChatInput enableSendButton={available} onMessageSubmit={onMessageSubmit} />
 					</section>
 				</div>
 			</div>

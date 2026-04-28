@@ -7,6 +7,7 @@ import {
 	TTSError,
 	TTSDecodeError,
 	decodeTTSAudio,
+	normalizeAudioFormat,
 	removeEmoji
 } from '../shared';
 import { SessionEvent } from '../shared/perso_util';
@@ -93,9 +94,10 @@ export class Session {
 			}
 		});
 
-		this.startHeartbeat();
-
-		if (!perso) return;
+		if (!perso) {
+			this.startHeartbeat();
+			return;
+		}
 
 		perso.subscribeStatus((event: CustomEvent) => {
 			if (event.detail?.live === false) {
@@ -227,14 +229,28 @@ export class Session {
 		}
 	}
 
-	async processSTF(file: Blob, format: string, message: string): Promise<string> {
+	/**
+	 * Sends an audio file for Speech-to-Face processing.
+	 *
+	 * `format` is optional — when omitted, undefined, or supplied as a MIME type
+	 * (`audio/wav` / `audio/mpeg`), it's normalized via `normalizeAudioFormat`,
+	 * which falls back to `file.type`. Pass `'wav'` or `'mp3'` directly when the
+	 * source format is already known and authoritative.
+	 *
+	 * @param file Audio blob to lip-sync.
+	 * @param format Optional format hint. Canonical (`'wav'`/`'mp3'`), MIME, or omitted.
+	 * @param message Optional text caption.
+	 * @returns File reference returned by the server.
+	 */
+	async processSTF(file: Blob, format?: string, message: string = ''): Promise<string> {
 		if (!this.perso) {
 			throw new Error('processSTF requires WebRTC (STF mode)');
 		}
 		this.pipelineSuppressed = false;
 		this.setChatState(ChatState.ANALYZING);
 		try {
-			const result = await this.perso.stf(file, format, message);
+			const normalizedFormat = normalizeAudioFormat(format, file);
+			const result = await this.perso.stf(file, normalizedFormat, message);
 			if (this.pipelineSuppressed) {
 				this.setChatState(null, ChatState.ANALYZING);
 				return result;

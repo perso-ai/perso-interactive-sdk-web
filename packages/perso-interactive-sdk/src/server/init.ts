@@ -16,6 +16,8 @@ type CreateSessionIdBody = {
 	stt_type?: string;
 	text_normalization_config?: string;
 	text_normalization_locale?: string | null;
+	stt_text_normalization_config?: string;
+	stt_text_normalization_locale?: string | null;
 };
 
 /**
@@ -123,6 +125,8 @@ function sessionTemplateToParams(template: SessionTemplate): CreateSessionIdBody
 		stt_type: hasCapability(SessionCapabilityName.STT) ? template.stt_type.name : undefined,
 		text_normalization_config: template.text_normalization_config?.textnormalizationconfig_id,
 		text_normalization_locale: template.text_normalization_locale,
+		stt_text_normalization_config: template.stt_text_normalization_config?.textnormalizationconfig_id,
+		stt_text_normalization_locale: template.stt_text_normalization_locale,
 		padding_left: template.padding_left ?? undefined,
 		padding_top: template.padding_top ?? undefined,
 		padding_height: template.padding_height ?? undefined
@@ -141,35 +145,6 @@ type PromptMetadata = {
  * @param promptId The prompt ID to fetch intro message for.
  * @returns The intro message string.
  */
-/**
- * Retrieves the list of session templates.
- * @param apiServer Perso API server URL.
- * @param apiKey API key used for authentication.
- * @returns {Promise<SessionTemplate[]>} Array of available session templates.
- */
-export async function getSessionTemplates(
-	apiServer: string,
-	apiKey: string
-): Promise<SessionTemplate[]> {
-	return await PersoUtil.getSessionTemplates(apiServer, apiKey);
-}
-
-/**
- * Retrieves a single session template by ID.
- * @param apiServer Perso API server URL.
- * @param apiKey API key used for authentication.
- * @param sessionTemplateId Session Template ID.
- * @returns {Promise<SessionTemplate>} The matching session template.
- * @throws {ApiError} If the template ID is invalid or API call fails.
- */
-export async function getSessionTemplate(
-	apiServer: string,
-	apiKey: string,
-	sessionTemplateId: string
-): Promise<SessionTemplate> {
-	return await PersoUtil.getSessionTemplate(apiServer, apiKey, sessionTemplateId);
-}
-
 export const getIntroMessage = async (apiServer: string, apiKey: string, promptId: string) => {
 	try {
 		const prompts = (await PersoUtil.getPrompts(apiServer, apiKey)) as PromptMetadata[];

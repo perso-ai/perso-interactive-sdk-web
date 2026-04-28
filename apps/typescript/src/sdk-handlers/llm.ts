@@ -11,7 +11,11 @@ async function synthesizeChunk(
 		return;
 	}
 	if (!options?.skipSTF) {
-		await session.processSTF(audioBlob, 'wav', chunk);
+		// processTTS returns the raw TTS bytes (no resample by default), so the
+		// blob may be MP3 or WAV depending on what the TTS provider produced.
+		// Hardcoding 'wav' makes the server reject/mis-decode MP3 payloads and
+		// can destabilize the WebRTC session.
+		await session.processSTF(audioBlob, audioBlob.type, chunk);
 	}
 }
 
