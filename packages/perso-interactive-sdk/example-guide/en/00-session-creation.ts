@@ -27,7 +27,7 @@ import { createSession, type Session } from 'perso-interactive-sdk-web/client';
  * TTS type, and STT type. These can be fetched via the SDK's getter APIs
  * (getLLMs, getTTSs, getSTTs, getModelStyles, getPrompts).
  *
- * @param apiServer - Perso API server URL (e.g., 'https://live-api.perso.ai')
+ * @param apiServer - Perso API server URL (e.g., 'https://platform.perso.ai')
  * @param apiKey    - API key (must be kept server-side only!)
  */
 async function example_manualConfiguration(

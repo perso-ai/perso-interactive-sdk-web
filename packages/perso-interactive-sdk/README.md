@@ -2,6 +2,10 @@
 
 WebRTC-based real-time interactive AI avatar SDK for web applications.
 
+> **API server:** Use `https://platform.perso.ai` as the Perso Interactive API server URL.
+>
+> Legacy `https://live-api.perso.ai` remains backward-compatible.
+
 ## Installation
 
 ```bash
@@ -47,7 +51,7 @@ const { createSessionId } = require("perso-interactive-sdk-web/server");
 
 const app = express();
 
-const API_SERVER = "https://live-api.perso.ai";
+const API_SERVER = "https://platform.perso.ai";
 const API_KEY = process.env.PERSO_INTERACTIVE_API_KEY;
 
 app.post("/api/session", async (req, res) => {
@@ -60,6 +64,8 @@ app.post("/api/session", async (req, res) => {
       tts_type: "<tts_name>",
       stt_type: "<stt_name>",
       // text_normalization_config: "<textnormalizationconfig_id>", // optional
+      // stt_text_normalization_config: "<textnormalizationconfig_id>", // optional
+      // stt_text_normalization_locale: "ko", // optional
     });
     res.json({ sessionId });
   } catch (error) {
@@ -79,6 +85,19 @@ If you have pre-configured session templates, pass the template ID directly inst
 const sessionId = await createSessionId(API_SERVER, API_KEY, "<sessiontemplate_id>");
 ```
 
+#### Listing available resources from the server
+
+Use `getAllSettings` (or any individual `getXxx` helper) on the server to discover the LLM/TTS/STT/model-style options that your tenant has access to without exposing the API key in the browser:
+
+```javascript
+const { getAllSettings } = require("perso-interactive-sdk-web/server");
+
+app.get("/api/settings", async (req, res) => {
+  const settings = await getAllSettings(API_SERVER, API_KEY);
+  res.json(settings); // { llms, ttsTypes, sttTypes, modelStyles, ... }
+});
+```
+
 > ⚠️ **Security Warning**: Never use `createSessionId` on the client-side in production. Exposing your API key in browser code can lead to unauthorized access and quota abuse. Always create sessions on the server and pass only the `sessionId` to the client.
 
 #### Client-side Testing Only
@@ -91,7 +110,7 @@ import {
   createSession,
 } from "perso-interactive-sdk-web/client";
 
-const apiServer = "https://live-api.perso.ai";
+const apiServer = "https://platform.perso.ai";
 const apiKey = "YOUR_API_KEY"; // ⚠️ NEVER commit or expose this in production
 
 const sessionId = await createSessionId(apiServer, apiKey, {
@@ -102,6 +121,8 @@ const sessionId = await createSessionId(apiServer, apiKey, {
   tts_type: "<tts_name>",
   stt_type: "<stt_name>",
   // text_normalization_config: "<textnormalizationconfig_id>", // optional
+  // stt_text_normalization_config: "<textnormalizationconfig_id>", // optional
+  // stt_text_normalization_locale: "ko", // optional
 });
 
 const session = await createSession(apiServer, sessionId, 1920, 1080, []);
@@ -123,7 +144,7 @@ import {
   ChatState,
 } from "perso-interactive-sdk-web/client";
 
-const apiServer = "https://live-api.perso.ai";
+const apiServer = "https://platform.perso.ai";
 
 // Obtain sessionId from your server (see Express.js example above)
 const sessionId = await fetch("/api/session", { method: "POST" })
@@ -169,7 +190,7 @@ const audioBlob = await session.processTTS(llmResponse);
 
 // 3. Animate avatar with audio
 if (audioBlob) {
-  await session.processSTF(audioBlob, "wav", llmResponse);
+  await session.processSTF(audioBlob, audioBlob.type, llmResponse);
 }
 ```
 
@@ -243,7 +264,7 @@ For direct browser usage via `<script>` tag without a bundler. The SDK exposes a
 <script src="https://cdn.jsdelivr.net/npm/perso-interactive-sdk-web@latest/dist/client/index.iife.js"></script>
 <script>
   async function start() {
-    const apiServer = "https://live-api.perso.ai";
+    const apiServer = "https://platform.perso.ai";
 
     // Obtain sessionId from your server (see Express.js example above)
     const sessionId = await fetch("/api/session", { method: "POST" })
@@ -278,15 +299,28 @@ For direct browser usage via `<script>` tag without a bundler. The SDK exposes a
 
 ### Server Exports
 
-| Export                                         | Description                    |
-| ---------------------------------------------- | ------------------------------ |
-| `createSessionId(apiServer, apiKey, sessionTemplateId)` | Create a session ID from a SessionTemplate |
-| `createSessionId(apiServer, apiKey, params)`   | Create a new session ID        |
-| `getIntroMessage(apiServer, apiKey, promptId)` | Get intro message for a prompt |
-| `getSessionTemplates(apiServer, apiKey)`                                           | Get available session templates                            |
-| `getSessionTemplate(apiServer, apiKey, sessionTemplateId)`                         | Get a single session template by ID                        |
-| `PersoUtilServer`                              | Low-level API utilities        |
-| `ApiError`                                     | Error class for API errors     |
+| Export                                                     | Description                                          |
+| ---------------------------------------------------------- | ---------------------------------------------------- |
+| `createSessionId(apiServer, apiKey, sessionTemplateId)`    | Create a session ID from a SessionTemplate           |
+| `createSessionId(apiServer, apiKey, params)`               | Create a new session ID                              |
+| `getIntroMessage(apiServer, apiKey, promptId)`             | Get intro message for a prompt                       |
+| `getLLMs(apiServer, apiKey)`                               | Get available LLM providers                          |
+| `getTTSs(apiServer, apiKey)`                               | Get available TTS providers                          |
+| `getSTTs(apiServer, apiKey)`                               | Get available STT providers                          |
+| `getModelStyles(apiServer, apiKey)`                        | Get available avatar styles                          |
+| `getBackgroundImages(apiServer, apiKey)`                   | Get available backgrounds                            |
+| `getPrompts(apiServer, apiKey)`                            | Get available prompts                                |
+| `getDocuments(apiServer, apiKey)`                          | Get available documents                              |
+| `getMcpServers(apiServer, apiKey)`                         | Get available MCP servers                            |
+| `getTextNormalizations(apiServer, apiKey)`                 | Get available text normalization configs             |
+| `getTextNormalization(apiServer, apiKey, configId)`        | Download text normalization ruleset (pre-signed URL) |
+| `getAllSettings(apiServer, apiKey)`                        | Get all settings at once                             |
+| `getSessionTemplates(apiServer, apiKey)`                   | Get available session templates                      |
+| `getSessionTemplate(apiServer, apiKey, sessionTemplateId)` | Get a single session template by ID                  |
+| `getSessionInfo(apiServer, sessionId)`                     | Get session metadata                                 |
+| `makeTTS(apiServer, params)`                               | Generate TTS audio from text (standalone)            |
+| `PersoUtilServer`                                          | Low-level API utilities                              |
+| `ApiError`                                                 | Error class for API errors                           |
 
 ### Client Exports
 
@@ -333,7 +367,7 @@ For direct browser usage via `<script>` tag without a bundler. The SDK exposes a
 | `processLLM(options)`               | Stream LLM responses with full control         |
 | `processTTSTF(message)`             | Speak a message without LLM                    |
 | `processTTS(message, options?)`     | Generate TTS audio from text (returns Blob). Options: `resample`, `locale`, `output_format` |
-| `processSTF(file, format, message)` | Send audio/video to STF pipeline                |
+| `processSTF(file, format?, message?)` | Send audio to the STF pipeline. `format` accepts canonical (`'wav'` / `'mp3'`) or MIME (`'audio/wav'`, `'audio/mpeg'`, …); when omitted, derived from `file.type` |
 | `startProcessSTT(timeout?)`         | Start recording voice for STT                  |
 | `stopProcessSTT(language?)`         | Stop recording and get text                    |
 | `isSTTRecording()`                  | Check if STT recording is in progress          |

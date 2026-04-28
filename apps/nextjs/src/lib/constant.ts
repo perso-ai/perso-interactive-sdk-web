@@ -1,5 +1,5 @@
 // Enter the API Server URL and API Key.
-export const persoInteractiveApiServerUrl = 'https://live-api.perso.ai';
+export const persoInteractiveApiServerUrl = 'https://platform.perso.ai';
 
 // Get env variable PERSO_INTERACTIVE_API_KEY from process.env
 // Using .env.local file to store the API key for security reasons

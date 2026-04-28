@@ -27,6 +27,10 @@
 
 ---
 
+> **API server:** Use `https://platform.perso.ai` as the Perso Interactive API server URL.
+>
+> Legacy `https://live-api.perso.ai` remains backward-compatible.
+
 # Perso Interactive SDK
 
 Provides Perso Interactive Web SDK and demo apps.
@@ -139,7 +143,7 @@ import { createSessionId, getIntroMessage } from 'perso-interactive-sdk-web/serv
 ## Session flow overview
 
 1. Collect the Perso Interactive API server URL and API key from the operator.
-2. Fetch configuration options using `getLLMs()`, `getTTSs()`, `getSTTs()`, `getModelStyles()`, `getPrompts()`, `getDocuments()`, `getBackgroundImages()`, and `getMcpServers()` for the UI.
+2. Fetch configuration options using `getLLMs()`, `getTTSs()`, `getSTTs()`, `getModelStyles()`, `getPrompts()`, `getDocuments()`, `getBackgroundImages()`, and `getMcpServers()` for the UI — or call `getAllSettings()` for everything in one round-trip. These getters are exported from both the `/client` and `/server` entry points; prefer the `/server` entry to keep the API key off the browser.
 3. When the user clicks **START**, invoke `createSessionId` with the selected options (plus optional padding and client tool selections), then `createSession` to bind the media stream to a `<video>` element.
 4. Subscribe to chat logs and chat states to render transcripts, voice/speech controls, and availability indicators. Use client tools for app-specific actions and handle SDK errors via the provided callbacks.
 
@@ -154,7 +158,7 @@ import { createSessionId, getIntroMessage } from 'perso-interactive-sdk-web/serv
 import { createSessionId, getIntroMessage } from 'perso-interactive-sdk-web/server';
 
 // 1. Initialize SDK
-const apiServerUrl = 'https://live-api.perso.ai';
+const apiServerUrl = 'https://platform.perso.ai';
 const apiKey = 'YOUR API KEY';
 
 // 2. Create session id with configuration
@@ -211,7 +215,7 @@ import {
 } from 'perso-interactive-sdk-web/client';
 
 // 1. Initialize SDK
-const apiServerUrl = 'https://live-api.perso.ai';
+const apiServerUrl = 'https://platform.perso.ai';
 const apiKey = 'YOUR API KEY';
 
 // 2. Fetch features and get session id

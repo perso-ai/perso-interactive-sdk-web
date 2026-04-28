@@ -1,5 +1,9 @@
 # Perso Interactive SDK details (js)
 
+> **API server:** Use `https://platform.perso.ai` as the Perso Interactive API server URL.
+>
+> Legacy `https://live-api.perso.ai` remains backward-compatible.
+
 ## PersoInteractive
 
 ### Get LLM list
@@ -321,6 +325,8 @@ function createSessionId(
     stt_type?: string;
     text_normalization_config?: string;
     text_normalization_locale?: string | null;
+    stt_text_normalization_config?: string;
+    stt_text_normalization_locale?: string | null;
   }
 ): Promise<string>;
 ```
@@ -348,8 +354,10 @@ const sessionId = await createSessionId(apiServer, apiKey, "tmpl-abc-123");
 | `params.stt_type` | No | STT `name` |
 | `params.document` | No | Document `document_id` |
 | `params.background_image` | No | BackgroundImage `backgroundimage_id` |
-| `params.text_normalization_config` | No | TextNormalizationConfig `textnormalizationconfig_id` |
+| `params.text_normalization_config` | No | TextNormalizationConfig `textnormalizationconfig_id` applied to TTS/LLM input |
 | `params.text_normalization_locale` | No | Locale for text normalization (e.g., `"ko"`, `"en"`). Pass `null` to explicitly disable. |
+| `params.stt_text_normalization_config` | No | TextNormalizationConfig `textnormalizationconfig_id` applied to STT output |
+| `params.stt_text_normalization_locale` | No | Locale for STT text normalization (e.g., `"ko"`, `"en"`, max 10 chars). Pass `null` to explicitly disable. |
 | `params.mcp_servers` | No | MCPServer `mcpserver_id` array |
 | `params.padding_left` | No | AI human horizontal position (A number between -1.0 and 1.0, default 0.0) |
 | `params.padding_top` | No | AI human vertical position (A number between 0.0 and 1.0, default 0.0) |
@@ -379,7 +387,7 @@ const { createSessionId } = require("perso-interactive-sdk-web/server");
 
 const app = express();
 
-const API_SERVER = "https://live-api.perso.ai";
+const API_SERVER = "https://platform.perso.ai";
 const API_KEY = process.env.PERSO_INTERACTIVE_API_KEY;
 
 app.post("/api/session", async (req, res) => {
@@ -392,6 +400,8 @@ app.post("/api/session", async (req, res) => {
       tts_type: "<tts_name>",
       stt_type: "<stt_name>",
       // text_normalization_config: "<textnormalizationconfig_id>", // optional
+      // stt_text_normalization_config: "<textnormalizationconfig_id>", // optional
+      // stt_text_normalization_locale: "ko", // optional
     });
     res.json({ sessionId });
   } catch (error) {
@@ -424,7 +434,7 @@ import {
   createSession,
 } from "perso-interactive-sdk-web/client";
 
-const apiServer = "https://live-api.perso.ai";
+const apiServer = "https://platform.perso.ai";
 const apiKey = "YOUR_API_KEY"; // ⚠️ NEVER commit or expose this in production
 
 const sessionId = await createSessionId(apiServer, apiKey, {
@@ -435,6 +445,8 @@ const sessionId = await createSessionId(apiServer, apiKey, {
   tts_type: "<tts_name>",
   stt_type: "<stt_name>",
   // text_normalization_config: "<textnormalizationconfig_id>", // optional
+  // stt_text_normalization_config: "<textnormalizationconfig_id>", // optional
+  // stt_text_normalization_locale: "ko", // optional
 });
 
 const session = await createSession(apiServer, sessionId, 1920, 1080, []);
@@ -475,8 +487,6 @@ const intro = await getIntroMessage(apiServer, apiKey, "<prompt_id>");
 ```
 
 ### Get Session Template list
-
-> **Server-side only**: This function requires your API key.
 
 ```typescript
 function getSessionTemplates(
@@ -549,6 +559,12 @@ function getSessionTemplates(
       "created_at": string
     } | null,
     "text_normalization_locale"?: string | null,
+    "stt_text_normalization_config"?: {
+      "textnormalizationconfig_id": string,
+      "name": string,
+      "created_at": string
+    } | null,
+    "stt_text_normalization_locale"?: string | null,
     "model_style": {
       "name": string,
       "model": string,
@@ -956,16 +972,18 @@ If an error occurs during TTS processing, a `TTSError` is passed to the error ha
 ### Send audio/video to STF pipeline
 
 ```typescript
-function processSTF(file: Blob, format: string, message: string): Promise<string>;
+function processSTF(file: Blob, format?: string, message?: string): Promise<string>;
 ```
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `file` | Yes | The audio or video file to send as a Blob |
-| `format` | Yes | The file format (e.g., `'wav'`, `'mp4'`) |
-| `message` | Yes | The message to accompany the file |
+| `file` | Yes | The audio file to send as a Blob |
+| `format` | No | Format hint. Accepts canonical `'wav'` / `'mp3'`, MIME types (`'audio/wav'`, `'audio/mpeg'`, `'audio/x-wav'`, `'audio/wave'`, `'audio/mp3'`, with or without parameters), or `undefined`. When omitted the SDK derives the format from `file.type`, falling back to `'wav'`. |
+| `message` | No | Optional text message to accompany the file. Defaults to an empty string. |
 
-Sends an audio or video file to the STF (Speech-To-Face) pipeline for processing. This method requires an active WebRTC connection (STF mode).
+Sends an audio file to the STF (Speech-To-Face) pipeline for processing. This method requires an active WebRTC connection (STF mode).
+
+The SDK normalizes the `format` argument via `normalizeAudioFormat` before forwarding it, so callers can safely pass the Blob's own `type` field directly (e.g. `processSTF(blob, blob.type, text)`).
 
 **Returns:** `Promise<string>` - The STF pipeline response
 
@@ -979,6 +997,12 @@ Sends an audio or video file to the STF (Speech-To-Face) pipeline for processing
 ```typescript
 const audioBlob = new Blob([audioData], { type: 'audio/wav' });
 const response = await session.processSTF(audioBlob, 'wav', 'Hello');
+
+// Or let the SDK derive the format from the Blob:
+const ttsBlob = await session.processTTS('Hello');
+if (ttsBlob) {
+  await session.processSTF(ttsBlob, ttsBlob.type, 'Hello');
+}
 ```
 
 ### Stop AI human speaking
@@ -1754,7 +1778,7 @@ Streams LLM responses with full tool execution support. Tool calls are executed 
 import { LlmProcessor, ChatTool, ChatState } from 'perso-interactive-sdk-web/client';
 
 const processor = new LlmProcessor({
-  apiServer: "https://live-api.perso.ai",
+  apiServer: "https://platform.perso.ai",
   sessionId: "your-session-id",
   clientTools: [weatherTool],
   callbacks: {

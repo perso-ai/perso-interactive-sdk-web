@@ -16,6 +16,8 @@ type CreateSessionIdBody = {
 	stt_type?: string;
 	text_normalization_config?: string;
 	text_normalization_locale?: string | null;
+	stt_text_normalization_config?: string;
+	stt_text_normalization_locale?: string | null;
 };
 
 /**
@@ -137,6 +139,8 @@ function sessionTemplateToParams(template: SessionTemplate): CreateSessionIdBody
 		stt_type: hasCapability(SessionCapabilityName.STT) ? template.stt_type.name : undefined,
 		text_normalization_config: template.text_normalization_config?.textnormalizationconfig_id,
 		text_normalization_locale: template.text_normalization_locale,
+		stt_text_normalization_config: template.stt_text_normalization_config?.textnormalizationconfig_id,
+		stt_text_normalization_locale: template.stt_text_normalization_locale,
 		padding_left: template.padding_left ?? undefined,
 		padding_top: template.padding_top ?? undefined,
 		padding_height: template.padding_height ?? undefined

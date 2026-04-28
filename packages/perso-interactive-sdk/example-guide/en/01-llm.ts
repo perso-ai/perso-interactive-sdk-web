@@ -26,7 +26,7 @@ import {
  * Creates a session.
  * The sessionId must be issued from the server. (To protect the API Key)
  *
- * @param apiServerUrl - Perso API server URL (e.g., 'https://live-api.perso.ai')
+ * @param apiServerUrl - Perso API server URL (e.g., 'https://platform.perso.ai')
  * @param sessionId    - Session ID issued from the server
  * @returns The created Session object
  */

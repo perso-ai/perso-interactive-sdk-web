@@ -106,6 +106,8 @@ export interface SessionTemplate {
 	stt_type: STTType;
 	text_normalization_config?: TextNormalizationConfig | null;
 	text_normalization_locale?: string | null;
+	stt_text_normalization_config?: TextNormalizationConfig | null;
+	stt_text_normalization_locale?: string | null;
 	model_style: ModelStyle;
 	background_image: BackgroundImage | null;
 	agent: string | null;

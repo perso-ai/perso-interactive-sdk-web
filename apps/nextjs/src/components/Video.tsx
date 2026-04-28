@@ -3,7 +3,7 @@
 import { useEffect, useRef } from 'react';
 
 interface VideoProps {
-	onVideoReady: (element: HTMLVideoElement) => void;
+	onVideoReady: (element: HTMLVideoElement | null) => void;
 }
 
 export default function Video({ onVideoReady }: VideoProps) {

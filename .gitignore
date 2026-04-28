@@ -39,3 +39,6 @@ vite.config.ts.timestamp-*
 /apps/sdk-tester/api/dist
 /apps/sdk-tester/api/node_modules
 /apps/sdk-tester/api/local.settings.json
+
+tools/*
+.omx/
