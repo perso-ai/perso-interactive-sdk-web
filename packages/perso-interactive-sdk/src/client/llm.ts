@@ -1,5 +1,7 @@
 import { ChatState, ChatTool, type LLMStreamChunk, type ProcessLLMOptions } from './types';
-import { ApiError, LLMError, LLMStreamingResponseError, PersoUtil, removeEmoji } from '../shared';
+import { ApiError, LLMError, LLMStreamingResponseError } from '../shared/error';
+import { PersoUtil } from '../shared/perso_util';
+import { removeEmoji } from '../shared/text';
 
 /** Maximum number of tool follow-up rounds before aborting to prevent infinite loops. */
 const MAX_TOOL_ROUNDS = 10;

@@ -22,7 +22,7 @@
   &nbsp;•&nbsp;
   <a href="./packages/perso-interactive-sdk/example-guide/en/README.md">Example Guide</a>
   &nbsp;•&nbsp;
-  <a href="./core/api-docs.md">API Reference</a>
+  <a href="https://perso-ai.github.io/perso-interactive-sdk-web/docs/api/">API Reference</a>
 </p>
 
 ---
@@ -252,7 +252,7 @@ const session = await createSession(
 
 ## API Reference
 
-For detailed API documentation, see the **[API Reference](./core/api-docs.md)**.
+For detailed API documentation, see the **[API Reference](https://perso-ai.github.io/perso-interactive-sdk-web/docs/api/)**.
 
 # License
 

@@ -1,5 +1,6 @@
-import { Timeout, PersoUtil, SessionCapabilityName, decodeTTSAudio } from '../shared';
-import { SessionEvent } from '../shared/perso_util';
+import { Timeout } from '../shared/error';
+import { PersoUtil, SessionCapabilityName, SessionEvent } from '../shared/perso_util';
+import { decodeTTSAudio } from '../shared/audio';
 
 interface Status {
 	live: boolean;
