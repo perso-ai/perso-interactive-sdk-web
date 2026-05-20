@@ -63,6 +63,7 @@ export {
 	type LLMType,
 	type TTSType,
 	type STTType,
+	type STTResponse,
 	type ModelStyle,
 	type BackgroundImage,
 	type Document,
@@ -83,8 +84,12 @@ export {
 	LLMStreamingResponseError,
 	STTError,
 	TTSError,
-	TTSDecodeError
-} from '../shared';
+	TTSDecodeError,
+	SessionCreationError,
+	DoesNotExistError,
+	NotInOrganizationError
+} from '../shared/error';
 
 // Audio utilities
-export { getWavSampleRate, TTS_TARGET_SAMPLE_RATE } from '../shared';
+export { getWavSampleRate } from '../shared/wav-utils';
+export { TTS_TARGET_SAMPLE_RATE } from '../shared/audio-resampler';

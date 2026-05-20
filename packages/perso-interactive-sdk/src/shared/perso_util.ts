@@ -1,5 +1,5 @@
 import { ApiError } from './error';
-import type { SessionTemplate } from './types';
+import type { STTResponse, SessionTemplate } from './types';
 
 export enum SessionCapabilityName {
 	LLM = 'LLM',
@@ -431,17 +431,22 @@ export class PersoUtil {
 	 * @param sessionId Session ID for the current session
 	 * @param audioFile Audio file (WAV format)
 	 * @param language Optional language code (e.g., 'ko', 'en')
-	 * @returns JSON response containing the transcribed text
+	 * @returns STTResponse with transcription, locale, and normalized text.
 	 * {
-	 *   "text": string
+	 *   "text": string,
+	 *   "locale": string,
+	 *   "normalized_text": string
 	 * }
+	 *
+	 * `normalized_text` may be empty or equal to `text` when the session has
+	 * no STT text-normalization config attached.
 	 */
 	static async makeSTT(
 		apiServer: string,
 		sessionId: string,
 		audioFile: File,
 		language?: string
-	): Promise<{ text: string }> {
+	): Promise<STTResponse> {
 		const formData = new FormData();
 		formData.append('audio', audioFile);
 		if (language) {

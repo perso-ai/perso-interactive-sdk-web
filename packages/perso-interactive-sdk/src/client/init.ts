@@ -1,4 +1,5 @@
-import { ApiError, PersoUtil, SessionCapabilityName } from '../shared';
+import { ApiError, wrapSessionCreationApiError } from '../shared/error';
+import { PersoUtil, SessionCapabilityName } from '../shared/perso_util';
 import type { SessionTemplate } from '../shared/types';
 
 type CreateSessionIdBody = {
@@ -35,7 +36,9 @@ type CreateSessionIdBody = {
  * @param sessionTemplateId SessionTemplate ID to resolve configuration from.
  * @returns Session ID returned by the server.
  * @throws {Error} If the template's `model_style.platform_type` is not `"webrtc"`.
- * @throws {ApiError} If the template ID is invalid or API call fails.
+ * @throws {SessionCreationError} When the API returns an error during session creation.
+ * @throws {DoesNotExistError} When the server response `code` is `'does_not_exist'` (subclass of `SessionCreationError`).
+ * @throws {NotInOrganizationError} When the server response `code` is `'not_in_organization'` (subclass of `SessionCreationError`).
  */
 export async function createSessionId(
 	apiServer: string,
@@ -69,56 +72,60 @@ export async function createSessionId(
 		);
 	}
 
-	let params: CreateSessionIdBody;
+	try {
+		let params: CreateSessionIdBody;
 
-	if (typeof paramsOrTemplateId === 'string') {
-		const template = await PersoUtil.getSessionTemplate(apiServer, apiKey, paramsOrTemplateId);
+		if (typeof paramsOrTemplateId === 'string') {
+			const template = await PersoUtil.getSessionTemplate(apiServer, apiKey, paramsOrTemplateId);
 
-		if (template.model_style.platform_type !== 'webrtc') {
-			throw new Error(
-				`SessionTemplate "${paramsOrTemplateId}" uses platform_type "${template.model_style.platform_type}", but only "webrtc" is supported`
-			);
+			if (template.model_style.platform_type !== 'webrtc') {
+				throw new Error(
+					`SessionTemplate "${paramsOrTemplateId}" uses platform_type "${template.model_style.platform_type}", but only "webrtc" is supported`
+				);
+			}
+
+			params = sessionTemplateToParams(template);
+		} else {
+			params = paramsOrTemplateId;
 		}
 
-		params = sessionTemplateToParams(template);
-	} else {
-		params = paramsOrTemplateId;
-	}
+		const body: CreateSessionIdBody & {
+			capability: Array<SessionCapabilityName>;
+		} = {
+			capability: [],
+			...params
+		};
 
-	const body: CreateSessionIdBody & {
-		capability: Array<SessionCapabilityName>;
-	} = {
-		capability: [],
-		...params
-	};
+		if (params.using_stf_webrtc) {
+			body.capability.push(SessionCapabilityName.STF_WEBRTC);
+		}
+		if (params?.llm_type) {
+			body.capability.push(SessionCapabilityName.LLM);
+			body.llm_type = params.llm_type;
+		}
+		if (params?.tts_type) {
+			body.capability.push(SessionCapabilityName.TTS);
+			body.tts_type = params.tts_type;
+		}
+		if (params?.stt_type) {
+			body.capability.push(SessionCapabilityName.STT);
+			body.stt_type = params.stt_type;
+		}
 
-	if (params.using_stf_webrtc) {
-		body.capability.push(SessionCapabilityName.STF_WEBRTC);
-	}
-	if (params?.llm_type) {
-		body.capability.push(SessionCapabilityName.LLM);
-		body.llm_type = params.llm_type;
-	}
-	if (params?.tts_type) {
-		body.capability.push(SessionCapabilityName.TTS);
-		body.tts_type = params.tts_type;
-	}
-	if (params?.stt_type) {
-		body.capability.push(SessionCapabilityName.STT);
-		body.stt_type = params.stt_type;
-	}
+		const response = await fetch(`${apiServer}/api/v1/session/`, {
+			body: JSON.stringify(body),
+			headers: {
+				'PersoLive-APIKey': apiKey,
+				'Content-Type': 'application/json'
+			},
+			method: 'POST'
+		});
 
-	const response = await fetch(`${apiServer}/api/v1/session/`, {
-		body: JSON.stringify(body),
-		headers: {
-			'PersoLive-APIKey': apiKey,
-			'Content-Type': 'application/json'
-		},
-		method: 'POST'
-	});
-
-	const json = await PersoUtil.parseJson(response);
-	return json.session_id as string;
+		const json = await PersoUtil.parseJson(response);
+		return json.session_id as string;
+	} catch (err) {
+		throw wrapSessionCreationApiError(err);
+	}
 }
 
 function sessionTemplateToParams(template: SessionTemplate): CreateSessionIdBody {

@@ -5,6 +5,7 @@ export type {
 	LLMType,
 	TTSType,
 	STTType,
+	STTResponse,
 	ModelStyle,
 	BackgroundImage,
 	Document,

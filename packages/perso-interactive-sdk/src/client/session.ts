@@ -2,15 +2,14 @@ import {
 	ApiError,
 	LLMError,
 	LLMStreamingResponseError,
-	PersoUtil,
 	STTError,
 	TTSError,
-	TTSDecodeError,
-	decodeTTSAudio,
-	normalizeAudioFormat,
-	removeEmoji
-} from '../shared';
-import { SessionEvent } from '../shared/perso_util';
+	TTSDecodeError
+} from '../shared/error';
+import { PersoUtil, SessionEvent } from '../shared/perso_util';
+import { decodeTTSAudio, normalizeAudioFormat } from '../shared/audio';
+import { removeEmoji } from '../shared/text';
+import type { STTResponse } from '../shared/types';
 import { LlmProcessor } from './llm';
 import {
 	type Chat,
@@ -215,12 +214,20 @@ export class Session {
 	}
 
 	async transcribeAudio(audio: Blob | File, language?: string): Promise<string> {
+		const result = await this.transcribeAudioDetailed(audio, language);
+		return result.text;
+	}
+
+	/**
+	 * Same as transcribeAudio but returns the full STTResponse including
+	 * locale and normalized_text from the OpenAPI contract.
+	 */
+	async transcribeAudioDetailed(audio: Blob | File, language?: string): Promise<STTResponse> {
 		const audioFile =
 			audio instanceof File ? audio : new File([audio], 'audio.wav', { type: audio.type });
 
 		try {
-			const result = await PersoUtil.makeSTT(this.apiServer, this.sessionId, audioFile, language);
-			return result.text;
+			return await PersoUtil.makeSTT(this.apiServer, this.sessionId, audioFile, language);
 		} catch (error) {
 			if (error instanceof ApiError) {
 				throw new STTError(error);

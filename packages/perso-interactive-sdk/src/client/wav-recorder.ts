@@ -1,4 +1,5 @@
-import { resampleAudio, encodeWav } from '../shared';
+import { resampleAudio } from '../shared/audio-resampler';
+import { encodeWav } from '../shared/wav-utils';
 
 export interface WavRecorderOptions {
 	channels?: number;

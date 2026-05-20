@@ -35,8 +35,13 @@ export {
 	getSessionTemplate,
 	getAllSettings,
 	makeTTS,
-	getSessionInfo,
-	PersoUtil as PersoUtilServer,
-	ApiError
-} from '../shared';
-export type { SessionTemplate } from '../shared/types';
+	getSessionInfo
+} from '../shared/settings';
+export { PersoUtil as PersoUtilServer } from '../shared/perso_util';
+export {
+	ApiError,
+	SessionCreationError,
+	DoesNotExistError,
+	NotInOrganizationError
+} from '../shared/error';
+export type { SessionTemplate, STTResponse } from '../shared/types';

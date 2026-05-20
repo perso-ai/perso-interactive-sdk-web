@@ -321,6 +321,9 @@ For direct browser usage via `<script>` tag without a bundler. The SDK exposes a
 | `makeTTS(apiServer, params)`                               | Generate TTS audio from text (standalone)            |
 | `PersoUtilServer`                                          | Low-level API utilities                              |
 | `ApiError`                                                 | Error class for API errors                           |
+| `SessionCreationError`                                     | Error class for session creation failures (extends `ApiError`) |
+| `DoesNotExistError`                                        | Session creation referenced a non-existent resource (extends `SessionCreationError`) |
+| `NotInOrganizationError`                                   | Session creation referenced a resource not assigned to the org (extends `SessionCreationError`) |
 
 ### Client Exports
 
@@ -352,6 +355,9 @@ For direct browser usage via `<script>` tag without a bundler. The SDK exposes a
 | `STTError`                                                                         | Error class for STT errors                                 |
 | `TTSError`                                                                         | Error class for TTS errors                                 |
 | `TTSDecodeError`                                                                   | Error class for TTS decode errors                          |
+| `SessionCreationError`                                                             | Error class for session creation failures (extends `ApiError`) |
+| `DoesNotExistError`                                                                | Session creation referenced a non-existent resource (extends `SessionCreationError`) |
+| `NotInOrganizationError`                                                           | Session creation referenced a resource not assigned to the org (extends `SessionCreationError`) |
 | `LlmProcessor`                                                                     | Standalone LLM streaming processor                         |
 | `WavRecorder`                                                                      | Audio recorder producing WAV files                         |
 | `createWavRecorder(options?)`                                                      | Factory function for WavRecorder                           |
@@ -372,6 +378,7 @@ For direct browser usage via `<script>` tag without a bundler. The SDK exposes a
 | `stopProcessSTT(language?)`         | Stop recording and get text                    |
 | `isSTTRecording()`                  | Check if STT recording is in progress          |
 | `transcribeAudio(audio, language?)` | Transcribe audio Blob/File to text             |
+| `transcribeAudioDetailed(audio, language?)` | Transcribe audio Blob/File and return full `STTResponse` (text + locale + normalized_text) |
 | `getMessageHistory()`               | Get LLM conversation history                   |
 | `getRemoteStream()`                 | Get AI human's media stream                    |
 | `getLocalStream()`                  | ~~Get user's audio stream~~ (Deprecated)       |
@@ -392,7 +399,7 @@ For direct browser usage via `<script>` tag without a bundler. The SDK exposes a
 | ------------------------ | -------------- | ---------------------------------------------- |
 | `lastRecordedAudioFile`  | `File \| null` | Last recorded WAV audio file from STT          |
 
-For detailed API documentation, see [api-docs.md](https://github.com/perso-ai/perso-interactive-sdk-web/blob/master/core/api-docs.md).
+For detailed API documentation, see the [API Reference site](https://perso-ai.github.io/perso-interactive-sdk-web/docs/api/).
 
 ## License
 

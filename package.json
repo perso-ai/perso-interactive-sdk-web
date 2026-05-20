@@ -25,7 +25,10 @@
 		"tsc:nextjs": "pnpm --filter @perso-interactive-sdk-web/app-nextjs check",
 		"tsc": "pnpm --filter @perso-interactive-sdk-web/app-svelte check && pnpm --filter @perso-interactive-sdk-web/app-vanilla check && pnpm --filter @perso-interactive-sdk-web/app-typescript check && pnpm --filter @perso-interactive-sdk-web/app-nextjs check",
 		"test": "pnpm --filter perso-interactive-sdk-web test",
-		"test:watch": "pnpm --filter perso-interactive-sdk-web test:watch"
+		"test:watch": "pnpm --filter perso-interactive-sdk-web test:watch",
+		"docs:dev": "pnpm --filter @perso-interactive-sdk-web/app-docs dev",
+		"docs:build": "pnpm --filter @perso-interactive-sdk-web/app-docs build",
+		"docs:preview": "pnpm --filter @perso-interactive-sdk-web/app-docs preview"
 	},
 	"devDependencies": {
 		"prettier-plugin-svelte": "^3.4.0"

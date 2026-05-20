@@ -883,6 +883,39 @@ const audioBlob = new Blob([audioData], { type: 'audio/wav' });
 const text = await session.transcribeAudio(audioBlob);
 ```
 
+### Transcribe audio with locale info
+
+```typescript
+function transcribeAudioDetailed(
+  audio: Blob | File,
+  language?: string
+): Promise<STTResponse>;
+
+interface STTResponse {
+  text: string;
+  locale: string;
+  normalized_text: string;
+}
+```
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `audio` | Yes | Audio data as Blob or File |
+| `language` | No | Language code for STT (e.g., `'ko'`, `'en'`). When omitted, the server detects the language. |
+
+**Returns:** `STTResponse` containing the transcription, the detected locale, and the normalized text.
+
+> `normalized_text` may be empty or equal to `text` when the session does not have an STT text-normalization config configured.
+
+**Throws:** `STTError` if the API call fails.
+
+Same as `transcribeAudio()` but returns the full STT response including the detected `locale` and `normalized_text`. Use this when downstream UI needs locale info or normalization-aware text.
+
+```typescript
+const result = await session.transcribeAudioDetailed(audioBlob, 'ko');
+console.log(result.text, result.locale, result.normalized_text);
+```
+
 ### Custom LLM response (Deprecated)
 
 ```typescript
@@ -1527,6 +1560,75 @@ class ApiError extends Error {
 | `code` | Yes | Error code string |
 | `detail` | Yes | Detailed error description |
 | `attr` | No | Additional attribute information |
+
+## SessionCreationError
+
+An error thrown by `createSessionId()` (including the `getSessionTemplate` path) when the underlying API returns an `ApiError`. Extends `ApiError`, so existing `instanceof ApiError` branches keep working — use this subclass when you want to distinguish session creation failures from other API errors.
+
+```typescript
+class SessionCreationError extends ApiError {
+  constructor(source: ApiError);
+}
+```
+
+The original `errorCode`, `code`, `detail`, and `attr` fields are preserved verbatim from the server response. The SDK does not parse `detail` strings — callers inspect the raw fields to decide how to react. For LIV-1681's "feature unavailable" scenarios, the relevant signals are typically:
+
+| Server response | Typical meaning | SDK error |
+|-----------------|-----------------|-----------|
+| `code: "does_not_exist"` (often with `attr` set) | Referenced resource (e.g. prompt) does not exist | `DoesNotExistError` (subclass of `SessionCreationError`) |
+| `code: "not_in_organization"` | Resource exists but is not assigned to the caller's organization | `NotInOrganizationError` (subclass of `SessionCreationError`) |
+| `code: "invalid"` with a `"… not found"` detail | Org-level feature (STT/TTS/LLM/Model Style) is not assigned | `SessionCreationError` — inspect `detail` |
+
+## DoesNotExistError
+
+A `SessionCreationError` subclass thrown when the server's response `code` is `"does_not_exist"` — the referenced resource (e.g. an invalid `prompt_id`) does not exist at all. The `attr` field, when present, identifies which input field referenced the missing resource (e.g. `"prompt"`).
+
+```typescript
+class DoesNotExistError extends SessionCreationError {
+  constructor(source: ApiError);
+}
+```
+
+## NotInOrganizationError
+
+A `SessionCreationError` subclass thrown when the server's response `code` is `"not_in_organization"` — the resource exists in the platform catalog but is not assigned to the caller's organization (e.g. an LLM/TTS/STT type that requires admin enablement). The `attr` field, when present, identifies which input field referenced the unavailable resource.
+
+```typescript
+class NotInOrganizationError extends SessionCreationError {
+  constructor(source: ApiError);
+}
+```
+
+**Usage Example:**
+
+```typescript
+import {
+  createSessionId,
+  DoesNotExistError,
+  NotInOrganizationError,
+  SessionCreationError,
+  ApiError
+} from 'perso-interactive-sdk-web/server';
+
+try {
+  const sessionId = await createSessionId(apiServer, apiKey, params);
+} catch (err) {
+  if (err instanceof DoesNotExistError) {
+    // e.g. invalid prompt_id — err.attr identifies which input field.
+  } else if (err instanceof NotInOrganizationError) {
+    // Resource exists but not enabled for this organization.
+  } else if (err instanceof SessionCreationError) {
+    // Other session creation failures (still has errorCode/code/detail/attr).
+  } else if (err instanceof ApiError) {
+    // Any other API error.
+  } else {
+    throw err;
+  }
+}
+```
+
+> When chaining `instanceof` checks, order from narrowest to broadest:
+> `DoesNotExistError` / `NotInOrganizationError` → `SessionCreationError` → `ApiError`. Because `SessionCreationError extends ApiError`, an `ApiError` check first would absorb every session creation error.
 
 ## LLMError
 
