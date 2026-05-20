@@ -883,7 +883,7 @@ const audioBlob = new Blob([audioData], { type: 'audio/wav' });
 const text = await session.transcribeAudio(audioBlob);
 ```
 
-### Transcribe audio with locale info
+### Transcribe audio (detailed response)
 
 ```typescript
 function transcribeAudioDetailed(
@@ -893,8 +893,6 @@ function transcribeAudioDetailed(
 
 interface STTResponse {
   text: string;
-  locale: string;
-  normalized_text: string;
 }
 ```
 
@@ -903,17 +901,17 @@ interface STTResponse {
 | `audio` | Yes | Audio data as Blob or File |
 | `language` | No | Language code for STT (e.g., `'ko'`, `'en'`). When omitted, the server detects the language. |
 
-**Returns:** `STTResponse` containing the transcription, the detected locale, and the normalized text.
+**Returns:** `STTResponse` containing the transcribed text.
 
-> `normalized_text` may be empty or equal to `text` when the session does not have an STT text-normalization config configured.
+> The underlying HTTP response may include additional fields such as `locale` and `normalized_text`. The SDK does not expose them as part of `STTResponse`. Consumers who need those values must call the REST endpoint (`POST /api/v1/session/{session_id}/stt/`) directly.
 
 **Throws:** `STTError` if the API call fails.
 
-Same as `transcribeAudio()` but returns the full STT response including the detected `locale` and `normalized_text`. Use this when downstream UI needs locale info or normalization-aware text.
+Same as `transcribeAudio()` but returns the `STTResponse` object form. Use this when you want an extensible result shape rather than a bare string.
 
 ```typescript
 const result = await session.transcribeAudioDetailed(audioBlob, 'ko');
-console.log(result.text, result.locale, result.normalized_text);
+console.log(result.text);
 ```
 
 ### Custom LLM response (Deprecated)

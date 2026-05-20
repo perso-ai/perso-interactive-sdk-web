@@ -51,14 +51,12 @@ export interface STTType {
 
 /**
  * Response from POST /api/v1/session/{session_id}/stt/.
- * Mirrors STTResponse in the OpenAPI schema. All three fields are required;
- * `normalized_text` may be empty or equal to `text` when the session has no
- * STT text-normalization config configured.
+ *
+ * The wire payload includes additional fields (e.g., `locale`,
+ * `normalized_text`) that the SDK intentionally does not expose.
  */
 export interface STTResponse {
 	text: string;
-	locale: string;
-	normalized_text: string;
 }
 
 export interface TextNormalizationConfig {

@@ -431,15 +431,10 @@ export class PersoUtil {
 	 * @param sessionId Session ID for the current session
 	 * @param audioFile Audio file (WAV format)
 	 * @param language Optional language code (e.g., 'ko', 'en')
-	 * @returns STTResponse with transcription, locale, and normalized text.
-	 * {
-	 *   "text": string,
-	 *   "locale": string,
-	 *   "normalized_text": string
-	 * }
+	 * @returns STTResponse with only the transcribed text.
 	 *
-	 * `normalized_text` may be empty or equal to `text` when the session has
-	 * no STT text-normalization config attached.
+	 * The server returns additional fields (e.g., `locale`, `normalized_text`)
+	 * which are intentionally not exposed by the SDK.
 	 */
 	static async makeSTT(
 		apiServer: string,
@@ -458,7 +453,8 @@ export class PersoUtil {
 			body: formData
 		});
 
-		return await this.parseJson(response);
+		const data = (await this.parseJson(response)) as { text: string };
+		return { text: data.text };
 	}
 
 	/**

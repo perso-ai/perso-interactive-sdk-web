@@ -219,8 +219,10 @@ export class Session {
 	}
 
 	/**
-	 * Same as transcribeAudio but returns the full STTResponse including
-	 * locale and normalized_text from the OpenAPI contract.
+	 * Same as transcribeAudio but returns the full STTResponse object.
+	 *
+	 * The SDK currently exposes only `text`. Other server-side fields
+	 * (e.g., `locale`, `normalized_text`) are intentionally omitted.
 	 */
 	async transcribeAudioDetailed(audio: Blob | File, language?: string): Promise<STTResponse> {
 		const audioFile =

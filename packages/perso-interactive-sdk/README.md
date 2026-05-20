@@ -378,7 +378,7 @@ For direct browser usage via `<script>` tag without a bundler. The SDK exposes a
 | `stopProcessSTT(language?)`         | Stop recording and get text                    |
 | `isSTTRecording()`                  | Check if STT recording is in progress          |
 | `transcribeAudio(audio, language?)` | Transcribe audio Blob/File to text             |
-| `transcribeAudioDetailed(audio, language?)` | Transcribe audio Blob/File and return full `STTResponse` (text + locale + normalized_text) |
+| `transcribeAudioDetailed(audio, language?)` | Transcribe audio Blob/File and return `STTResponse` (currently `{ text }`) |
 | `getMessageHistory()`               | Get LLM conversation history                   |
 | `getRemoteStream()`                 | Get AI human's media stream                    |
 | `getLocalStream()`                  | ~~Get user's audio stream~~ (Deprecated)       |
