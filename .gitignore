@@ -42,3 +42,6 @@ vite.config.ts.timestamp-*
 
 tools/*
 .omx/
+
+# Internal planning/spec docs (superpowers)
+/docs/superpowers/
