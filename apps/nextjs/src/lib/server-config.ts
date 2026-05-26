@@ -1,4 +1,4 @@
-import { persoInteractiveApiServerUrl, persoInteractiveApiKey } from './constant';
+import { persoInteractiveApiKey } from './constant';
 import { getAllSettings } from 'perso-interactive-sdk-web/server';
 
 interface Config {
@@ -29,7 +29,7 @@ export async function getConfig(): Promise<Config> {
 	if (cachedConfig) return cachedConfig;
 
 	const { llms, ttsTypes, sttTypes, modelStyles, backgroundImages, prompts, documents } =
-		await getAllSettings(persoInteractiveApiServerUrl, persoInteractiveApiKey);
+		await getAllSettings({ apiKey: persoInteractiveApiKey });
 
 	if (
 		!llms.length ||

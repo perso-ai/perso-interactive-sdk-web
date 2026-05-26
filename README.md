@@ -158,27 +158,31 @@ import { createSessionId, getIntroMessage } from 'perso-interactive-sdk-web/serv
 import { createSessionId, getIntroMessage } from 'perso-interactive-sdk-web/server';
 
 // 1. Initialize SDK
-const apiServerUrl = 'https://platform.perso.ai';
 const apiKey = 'YOUR API KEY';
 
 // 2. Create session id with configuration
-const sessionId = await createSessionId(apiServerUrl, apiKey, {
-	using_stf_webrtc: true,
-	model_style, // Selected model style
-	prompt, // Selected prompt
-	llm_type, // Selected LLM
-	tts_type, // Selected TTS
-	stt_type, // Selected STT
-	document, // Selected document
-	background_image, // Selected background
-	mcp_servers, // Selected MCP servers
-	padding_left,
-	padding_top,
-	padding_height
+//    apiServer defaults to https://platform.perso.ai — pass it explicitly to
+//    target another environment (e.g., stage).
+const sessionId = await createSessionId({
+	apiKey,
+	params: {
+		using_stf_webrtc: true,
+		model_style, // Selected model style
+		prompt, // Selected prompt
+		llm_type, // Selected LLM
+		tts_type, // Selected TTS
+		stt_type, // Selected STT
+		document, // Selected document
+		background_image, // Selected background
+		mcp_servers, // Selected MCP servers
+		padding_left,
+		padding_top,
+		padding_height
+	}
 });
 
 // 3. Get intro message (optional)
-const introMessage = await getIntroMessage(apiServerUrl, apiKey, prompt);
+const introMessage = await getIntroMessage({ apiKey, promptId: prompt });
 
 return { sessionId, introMessage };
 ```
@@ -189,14 +193,13 @@ return { sessionId, introMessage };
 // Import from client subpath
 import { createSession } from 'perso-interactive-sdk-web/client';
 
-// Create WebRTC session
-const session = await createSession(
-	apiServerUrl,
+// Create WebRTC session (apiServer defaults to https://platform.perso.ai)
+const session = await createSession({
 	sessionId,
-	chatbotWidth,
-	chatbotHeight,
-	clientTools ?? [] // Refer to the following reference
-);
+	width: chatbotWidth,
+	height: chatbotHeight,
+	clientTools: clientTools ?? [] // Refer to the following reference
+});
 ```
 
 ### Client Side
@@ -215,33 +218,35 @@ import {
 } from 'perso-interactive-sdk-web/client';
 
 // 1. Initialize SDK
-const apiServerUrl = 'https://platform.perso.ai';
 const apiKey = 'YOUR API KEY';
 
 // 2. Fetch features and get session id
-const sessionId = await createSessionId(apiServerUrl, apiKey, {
-	using_stf_webrtc: true,
-	model_style, // Selected model style
-	prompt, // Selected prompt
-	llm_type, // Selected LLM
-	tts_type, // Selected TTS
-	stt_type, // Selected STT
-	document, // Selected document
-	background_image, // Selected background
-	mcp_servers, // Selected MCP servers
-	padding_left,
-	padding_top,
-	padding_height
+//    apiServer defaults to https://platform.perso.ai
+const sessionId = await createSessionId({
+	apiKey,
+	params: {
+		using_stf_webrtc: true,
+		model_style, // Selected model style
+		prompt, // Selected prompt
+		llm_type, // Selected LLM
+		tts_type, // Selected TTS
+		stt_type, // Selected STT
+		document, // Selected document
+		background_image, // Selected background
+		mcp_servers, // Selected MCP servers
+		padding_left,
+		padding_top,
+		padding_height
+	}
 });
 
 // 3. Create WebRTC Session
-const session = await createSession(
-	apiServerUrl,
+const session = await createSession({
 	sessionId,
-	chatbotWidth,
-	chatbotHeight,
-	clientTools ?? [] // Refer to the following reference
-);
+	width: chatbotWidth,
+	height: chatbotHeight,
+	clientTools: clientTools ?? [] // Refer to the following reference
+});
 ```
 
 > reference) Tool calling example: [English](./packages/perso-interactive-sdk/example-guide/en/05-pipeline.ts#L228)

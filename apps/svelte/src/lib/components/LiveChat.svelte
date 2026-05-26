@@ -50,13 +50,12 @@
 		sessionState = 0;
 
 		try {
-			session = await createSession(
-				persoInteractiveConfig.persoInteractiveApiServerUrl,
-				persoInteractiveConfig.sessionId,
-				persoInteractiveConfig.chatbotWidth,
-				persoInteractiveConfig.chatbotHeight,
-				persoInteractiveConfig.clientTools
-			);
+			session = await createSession({
+				sessionId: persoInteractiveConfig.sessionId,
+				width: persoInteractiveConfig.chatbotWidth,
+				height: persoInteractiveConfig.chatbotHeight,
+				clientTools: persoInteractiveConfig.clientTools
+			});
 
 			sessionState = 2;
 		} catch (e) {
@@ -88,10 +87,9 @@
 		const removeOnClose = session.onClose((manualClosed: boolean) => {
 			if (!manualClosed) {
 				setTimeout(() => {
-					getSessionInfo(
-						persoInteractiveConfig.persoInteractiveApiServerUrl,
-						persoInteractiveConfig.sessionId
-					)
+					getSessionInfo({
+						sessionId: persoInteractiveConfig.sessionId
+					})
 						.then((response: any) => {
 							if (response.termination_reason) {
 								alert(response.termination_reason);

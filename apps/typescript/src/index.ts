@@ -17,6 +17,7 @@ import {
 	type Chat,
 	type Session
 } from 'perso-interactive-sdk-web/client';
+
 import { processChat, stopSpeech } from './sdk-handlers/llm';
 import { processTTS, playAudio } from './sdk-handlers/tts';
 import { startProcessSTT, stopProcessSTT, toggleSTT } from './sdk-handlers/stt';
@@ -318,7 +319,7 @@ const getConfig = async (): Promise<void> => {
 	authorizeBtn.innerText = 'Loading...';
 
 	try {
-		config = await getAllSettings(apiServer, apiKey);
+		config = await getAllSettings({ apiKey, apiServer });
 	} catch (error) {
 		authorizeBtn.disabled = false;
 		authorizeBtn.innerText = 'Authorize';
@@ -541,28 +542,32 @@ const startSession = async (): Promise<void> => {
 	const videoElement = getElement<HTMLVideoElement>('video');
 
 	try {
-		const sessionId = await createSessionId(apiServer, apiKey, {
-			using_stf_webrtc: true,
-			model_style: modelStyleKey,
-			prompt: promptKey,
-			document: documentKey ?? undefined,
-			background_image: backgroundImageKey ?? undefined,
-			mcp_servers: mcpServersKey,
-			padding_left: chatbotLeft / 100,
-			padding_top: chatbotTop / 100,
-			padding_height: chatbotHeight / 100,
-			llm_type: llmTypeKey,
-			tts_type: ttsTypeKey,
-			stt_type: sttTypeKey
+		const sessionId = await createSessionId({
+			apiKey,
+			params: {
+				using_stf_webrtc: true,
+				model_style: modelStyleKey,
+				prompt: promptKey,
+				document: documentKey ?? undefined,
+				background_image: backgroundImageKey ?? undefined,
+				mcp_servers: mcpServersKey,
+				padding_left: chatbotLeft / 100,
+				padding_top: chatbotTop / 100,
+				padding_height: chatbotHeight / 100,
+				llm_type: llmTypeKey,
+				tts_type: ttsTypeKey,
+				stt_type: sttTypeKey
+			},
+			apiServer
 		});
 
-		const newSession = await createSession(
-			apiServer,
+		const newSession = await createSession({
 			sessionId,
 			width,
 			height,
-			selectedClientTools
-		);
+			clientTools: selectedClientTools,
+			apiServer
+		});
 
 		session = newSession;
 
@@ -571,6 +576,7 @@ const startSession = async (): Promise<void> => {
 		applyChatStates(null);
 		applySessionState(2);
 	} catch (error) {
+		console.error('Session creation failed:', error);
 		alert(error);
 		applySessionState(0);
 		return;
@@ -607,7 +613,7 @@ const startSession = async (): Promise<void> => {
 	removeOnClose = session.onClose((manualClosed: boolean) => {
 		if (!manualClosed) {
 			setTimeout(() => {
-				getSessionInfo(apiServer, session!.getSessionId())
+				getSessionInfo({ sessionId: session!.getSessionId(), apiServer })
 					.then((response: { termination_reason: string }) => {
 						if (response.termination_reason) {
 							alert(response.termination_reason);

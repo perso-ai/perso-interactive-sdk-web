@@ -51,21 +51,25 @@ const { createSessionId } = require("perso-interactive-sdk-web/server");
 
 const app = express();
 
-const API_SERVER = "https://platform.perso.ai";
 const API_KEY = process.env.PERSO_INTERACTIVE_API_KEY;
 
 app.post("/api/session", async (req, res) => {
   try {
-    const sessionId = await createSessionId(API_SERVER, API_KEY, {
-      using_stf_webrtc: true,
-      model_style: "<model_style_name>",
-      prompt: "<prompt_id>",
-      llm_type: "<llm_name>",
-      tts_type: "<tts_name>",
-      stt_type: "<stt_name>",
-      // text_normalization_config: "<textnormalizationconfig_id>", // optional
-      // stt_text_normalization_config: "<textnormalizationconfig_id>", // optional
-      // stt_text_normalization_locale: "ko", // optional
+    const sessionId = await createSessionId({
+      apiKey: API_KEY,
+      params: {
+        using_stf_webrtc: true,
+        model_style: "<model_style_name>",
+        prompt: "<prompt_id>",
+        llm_type: "<llm_name>",
+        tts_type: "<tts_name>",
+        stt_type: "<stt_name>",
+        // text_normalization_config: "<textnormalizationconfig_id>", // optional
+        // stt_text_normalization_config: "<textnormalizationconfig_id>", // optional
+        // stt_text_normalization_locale: "ko", // optional
+      },
+      // apiServer defaults to "https://platform.perso.ai".
+      // Pass it explicitly to point at another environment (e.g., stage).
     });
     res.json({ sessionId });
   } catch (error) {
@@ -77,12 +81,21 @@ app.post("/api/session", async (req, res) => {
 app.listen(3000, () => console.log("Server running on port 3000"));
 ```
 
+> **Two call styles supported.** Every SDK function shown above also accepts the
+> classic positional form `createSessionId(apiServer, apiKey, params)` for
+> backward compatibility. New code should prefer the **object form** — it lets
+> you omit `apiServer` (defaults to `https://platform.perso.ai`) and is easier
+> to read at call sites.
+
 #### Using a SessionTemplate
 
 If you have pre-configured session templates, pass the template ID directly instead of assembling params manually:
 
 ```javascript
-const sessionId = await createSessionId(API_SERVER, API_KEY, "<sessiontemplate_id>");
+const sessionId = await createSessionId({
+  apiKey: API_KEY,
+  sessionTemplateId: "<sessiontemplate_id>",
+});
 ```
 
 #### Listing available resources from the server
@@ -93,10 +106,32 @@ Use `getAllSettings` (or any individual `getXxx` helper) on the server to discov
 const { getAllSettings } = require("perso-interactive-sdk-web/server");
 
 app.get("/api/settings", async (req, res) => {
-  const settings = await getAllSettings(API_SERVER, API_KEY);
+  const settings = await getAllSettings({ apiKey: API_KEY });
   res.json(settings); // { llms, ttsTypes, sttTypes, modelStyles, ... }
 });
 ```
+
+#### Stage / custom API server
+
+Every object-form call accepts an optional `apiServer`. Omit it for production
+(defaults to `https://platform.perso.ai`), or pass an explicit URL to point at
+a non-production environment. The SDK trims trailing slashes for you.
+
+```javascript
+const { DEFAULT_API_SERVER, getAllSettings } = require(
+  "perso-interactive-sdk-web/server"
+);
+
+DEFAULT_API_SERVER; // "https://platform.perso.ai"
+
+const stageSettings = await getAllSettings({
+  apiKey: API_KEY,
+  apiServer: "https://stage-platform.perso.ai",
+});
+```
+
+The same `DEFAULT_API_SERVER` constant is also re-exported from
+`perso-interactive-sdk-web/client`.
 
 > ⚠️ **Security Warning**: Never use `createSessionId` on the client-side in production. Exposing your API key in browser code can lead to unauthorized access and quota abuse. Always create sessions on the server and pass only the `sessionId` to the client.
 
@@ -110,22 +145,29 @@ import {
   createSession,
 } from "perso-interactive-sdk-web/client";
 
-const apiServer = "https://platform.perso.ai";
 const apiKey = "YOUR_API_KEY"; // ⚠️ NEVER commit or expose this in production
 
-const sessionId = await createSessionId(apiServer, apiKey, {
-  using_stf_webrtc: true,
-  model_style: "<model_style_name>",
-  prompt: "<prompt_id>",
-  llm_type: "<llm_name>",
-  tts_type: "<tts_name>",
-  stt_type: "<stt_name>",
-  // text_normalization_config: "<textnormalizationconfig_id>", // optional
-  // stt_text_normalization_config: "<textnormalizationconfig_id>", // optional
-  // stt_text_normalization_locale: "ko", // optional
+const sessionId = await createSessionId({
+  apiKey,
+  params: {
+    using_stf_webrtc: true,
+    model_style: "<model_style_name>",
+    prompt: "<prompt_id>",
+    llm_type: "<llm_name>",
+    tts_type: "<tts_name>",
+    stt_type: "<stt_name>",
+    // text_normalization_config: "<textnormalizationconfig_id>", // optional
+    // stt_text_normalization_config: "<textnormalizationconfig_id>", // optional
+    // stt_text_normalization_locale: "ko", // optional
+  },
 });
 
-const session = await createSession(apiServer, sessionId, 1920, 1080, []);
+const session = await createSession({
+  sessionId,
+  width: 1920,
+  height: 1080,
+  clientTools: [],
+});
 
 const videoEl = document.getElementById("video");
 if (videoEl instanceof HTMLVideoElement) {
@@ -144,15 +186,18 @@ import {
   ChatState,
 } from "perso-interactive-sdk-web/client";
 
-const apiServer = "https://platform.perso.ai";
-
 // Obtain sessionId from your server (see Express.js example above)
 const sessionId = await fetch("/api/session", { method: "POST" })
   .then((res) => res.json())
   .then((data) => data.sessionId);
 
-// Create a session
-const session = await createSession(apiServer, sessionId, 1920, 1080, []);
+// Create a session (apiServer defaults to https://platform.perso.ai)
+const session = await createSession({
+  sessionId,
+  width: 1920,
+  height: 1080,
+  clientTools: [],
+});
 
 // Bind to video element
 const videoEl = document.getElementById("video");
@@ -247,13 +292,12 @@ const weatherTool = new ChatTool(
   false, // executeOnly: if true, no follow-up LLM response
 );
 
-const session = await createSession(
-  apiServer,
+const session = await createSession({
   sessionId,
   width,
   height,
-  [weatherTool]
-);
+  clientTools: [weatherTool],
+});
 ```
 
 ### Browser (IIFE)
@@ -264,20 +308,18 @@ For direct browser usage via `<script>` tag without a bundler. The SDK exposes a
 <script src="https://cdn.jsdelivr.net/npm/perso-interactive-sdk-web@latest/dist/client/index.iife.js"></script>
 <script>
   async function start() {
-    const apiServer = "https://platform.perso.ai";
-
     // Obtain sessionId from your server (see Express.js example above)
     const sessionId = await fetch("/api/session", { method: "POST" })
       .then((res) => res.json())
       .then((data) => data.sessionId);
 
-    const session = await PersoInteractive.createSession(
-      apiServer,
+    // apiServer defaults to https://platform.perso.ai
+    const session = await PersoInteractive.createSession({
       sessionId,
-      1920,
-      1080,
-      []
-    );
+      width: 1920,
+      height: 1080,
+      clientTools: [],
+    });
 
     const videoEl = document.getElementById("video");
     if (videoEl instanceof HTMLVideoElement) {
@@ -297,58 +339,65 @@ For direct browser usage via `<script>` tag without a bundler. The SDK exposes a
 
 ## API Reference
 
+> Every function below has two call styles: the **object form** shown in the
+> table (recommended for new code; `apiServer` is optional and defaults to
+> `https://platform.perso.ai`) and the equivalent **positional form**
+> (`fn(apiServer, apiKey, …)`) which remains fully supported.
+
 ### Server Exports
 
-| Export                                                     | Description                                          |
-| ---------------------------------------------------------- | ---------------------------------------------------- |
-| `createSessionId(apiServer, apiKey, sessionTemplateId)`    | Create a session ID from a SessionTemplate           |
-| `createSessionId(apiServer, apiKey, params)`               | Create a new session ID                              |
-| `getIntroMessage(apiServer, apiKey, promptId)`             | Get intro message for a prompt                       |
-| `getLLMs(apiServer, apiKey)`                               | Get available LLM providers                          |
-| `getTTSs(apiServer, apiKey)`                               | Get available TTS providers                          |
-| `getSTTs(apiServer, apiKey)`                               | Get available STT providers                          |
-| `getModelStyles(apiServer, apiKey)`                        | Get available avatar styles                          |
-| `getBackgroundImages(apiServer, apiKey)`                   | Get available backgrounds                            |
-| `getPrompts(apiServer, apiKey)`                            | Get available prompts                                |
-| `getDocuments(apiServer, apiKey)`                          | Get available documents                              |
-| `getMcpServers(apiServer, apiKey)`                         | Get available MCP servers                            |
-| `getTextNormalizations(apiServer, apiKey)`                 | Get available text normalization configs             |
-| `getTextNormalization(apiServer, apiKey, configId)`        | Download text normalization ruleset (pre-signed URL) |
-| `getAllSettings(apiServer, apiKey)`                        | Get all settings at once                             |
-| `getSessionTemplates(apiServer, apiKey)`                   | Get available session templates                      |
-| `getSessionTemplate(apiServer, apiKey, sessionTemplateId)` | Get a single session template by ID                  |
-| `getSessionInfo(apiServer, sessionId)`                     | Get session metadata                                 |
-| `makeTTS(apiServer, params)`                               | Generate TTS audio from text (standalone)            |
-| `PersoUtilServer`                                          | Low-level API utilities                              |
-| `ApiError`                                                 | Error class for API errors                           |
-| `SessionCreationError`                                     | Error class for session creation failures (extends `ApiError`) |
-| `DoesNotExistError`                                        | Session creation referenced a non-existent resource (extends `SessionCreationError`) |
-| `NotInOrganizationError`                                   | Session creation referenced a resource not assigned to the org (extends `SessionCreationError`) |
+| Export                                                                          | Description                                          |
+| ------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| `createSessionId({ apiKey, sessionTemplateId, apiServer? })`                    | Create a session ID from a SessionTemplate           |
+| `createSessionId({ apiKey, params, apiServer? })`                               | Create a new session ID                              |
+| `getIntroMessage({ apiKey, promptId, apiServer? })`                             | Get intro message for a prompt                       |
+| `getLLMs({ apiKey, apiServer? })`                                               | Get available LLM providers                          |
+| `getTTSs({ apiKey, apiServer? })`                                               | Get available TTS providers                          |
+| `getSTTs({ apiKey, apiServer? })`                                               | Get available STT providers                          |
+| `getModelStyles({ apiKey, apiServer? })`                                        | Get available avatar styles                          |
+| `getBackgroundImages({ apiKey, apiServer? })`                                   | Get available backgrounds                            |
+| `getPrompts({ apiKey, apiServer? })`                                            | Get available prompts                                |
+| `getDocuments({ apiKey, apiServer? })`                                          | Get available documents                              |
+| `getMcpServers({ apiKey, apiServer? })`                                         | Get available MCP servers                            |
+| `getTextNormalizations({ apiKey, apiServer? })`                                 | Get available text normalization configs             |
+| `getTextNormalization({ apiKey, configId, apiServer? })`                        | Download text normalization ruleset (pre-signed URL) |
+| `getAllSettings({ apiKey, apiServer? })`                                        | Get all settings at once                             |
+| `getSessionTemplates({ apiKey, apiServer? })`                                   | Get available session templates                      |
+| `getSessionTemplate({ apiKey, sessionTemplateId, apiServer? })`                 | Get a single session template by ID                  |
+| `getSessionInfo({ sessionId, apiServer? })`                                     | Get session metadata                                 |
+| `makeTTS({ sessionId, text, locale?, output_format?, apiServer? })`             | Generate TTS audio from text (standalone)            |
+| `DEFAULT_API_SERVER`                                                            | The default API server URL (`https://platform.perso.ai`) |
+| `PersoUtilServer`                                                               | Low-level API utilities                              |
+| `ApiError`                                                                      | Error class for API errors                           |
+| `SessionCreationError`                                                          | Error class for session creation failures (extends `ApiError`) |
+| `DoesNotExistError`                                                             | Session creation referenced a non-existent resource (extends `SessionCreationError`) |
+| `NotInOrganizationError`                                                        | Session creation referenced a resource not assigned to the org (extends `SessionCreationError`) |
 
 ### Client Exports
 
 | Export                                                                             | Description                                                |
 | ---------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| `createSession(apiServer, sessionId, width, height, clientTools)`                  | Create a session                                           |
+| `createSession({ sessionId, width, height, clientTools, apiServer? })`             | Create a session                                           |
 | `Session`                                                                          | Session class                                              |
 | `ChatTool`                                                                         | Client tool class                                          |
 | `ChatState`                                                                        | Enum for chat states (RECORDING, LLM, ANALYZING, SPEAKING, TTS) |
-| `getLLMs(apiServer, apiKey)`                                                       | Get available LLM providers                                |
-| `getTTSs(apiServer, apiKey)`                                                       | Get available TTS providers                                |
-| `getSTTs(apiServer, apiKey)`                                                       | Get available STT providers                                |
-| `getModelStyles(apiServer, apiKey)`                                                | Get available avatar styles                                |
-| `getBackgroundImages(apiServer, apiKey)`                                           | Get available backgrounds                                  |
-| `getPrompts(apiServer, apiKey)`                                                    | Get available prompts                                      |
-| `getDocuments(apiServer, apiKey)`                                                  | Get available documents                                    |
-| `getMcpServers(apiServer, apiKey)`                                                 | Get available MCP servers                                  |
-| `getTextNormalizations(apiServer, apiKey)`                                         | Get available text normalization configs                   |
-| `getTextNormalization(apiServer, apiKey, configId)`                                | Download text normalization ruleset (pre-signed URL)       |
-| `getAllSettings(apiServer, apiKey)`                                                | Get all settings at once                                   |
-| `getSessionInfo(apiServer, sessionId)`                                             | Get session metadata                                       |
-| `makeTTS(apiServer, params)`                                                       | Generate TTS audio from text (standalone)                  |
-| `createSessionId(apiServer, apiKey, sessionTemplateId)`                            | Create session ID from a SessionTemplate (exposes API key) |
-| `createSessionId(apiServer, apiKey, params)`                                       | Create session ID (exposes API key in browser)             |
-| `getSessionTemplates(apiServer, apiKey)`                                           | Get available session templates                            |
+| `getLLMs({ apiKey, apiServer? })`                                                  | Get available LLM providers                                |
+| `getTTSs({ apiKey, apiServer? })`                                                  | Get available TTS providers                                |
+| `getSTTs({ apiKey, apiServer? })`                                                  | Get available STT providers                                |
+| `getModelStyles({ apiKey, apiServer? })`                                           | Get available avatar styles                                |
+| `getBackgroundImages({ apiKey, apiServer? })`                                      | Get available backgrounds                                  |
+| `getPrompts({ apiKey, apiServer? })`                                               | Get available prompts                                      |
+| `getDocuments({ apiKey, apiServer? })`                                             | Get available documents                                    |
+| `getMcpServers({ apiKey, apiServer? })`                                            | Get available MCP servers                                  |
+| `getTextNormalizations({ apiKey, apiServer? })`                                    | Get available text normalization configs                   |
+| `getTextNormalization({ apiKey, configId, apiServer? })`                           | Download text normalization ruleset (pre-signed URL)       |
+| `getAllSettings({ apiKey, apiServer? })`                                           | Get all settings at once                                   |
+| `getSessionInfo({ sessionId, apiServer? })`                                        | Get session metadata                                       |
+| `makeTTS({ sessionId, text, locale?, output_format?, apiServer? })`                | Generate TTS audio from text (standalone)                  |
+| `createSessionId({ apiKey, sessionTemplateId, apiServer? })`                       | Create session ID from a SessionTemplate (exposes API key) |
+| `createSessionId({ apiKey, params, apiServer? })`                                  | Create session ID (exposes API key in browser)             |
+| `getSessionTemplates({ apiKey, apiServer? })`                                      | Get available session templates                            |
+| `DEFAULT_API_SERVER`                                                               | The default API server URL (`https://platform.perso.ai`)   |
 | `ApiError`                                                                         | Error class for API errors                                 |
 | `LLMError`                                                                         | Error class for LLM errors                                 |
 | `LLMStreamingResponseError`                                                        | Error class for streaming errors                           |

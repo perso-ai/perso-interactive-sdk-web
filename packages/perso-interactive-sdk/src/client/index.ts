@@ -12,13 +12,12 @@
  * } from 'perso-interactive-sdk-web/client';
  *
  * // Create a session (sessionId should come from server)
- * const session = await createSession(
- *   apiServer,
+ * const session = await createSession({
  *   sessionId,
  *   width,
  *   height,
  *   clientTools
- * );
+ * });
  *
  * // Bind to video element
  * session.setSrc(videoElement);
@@ -42,6 +41,7 @@ export {
 	createSession,
 	getSessionInfo,
 	makeTTS,
+	DEFAULT_API_SERVER,
 	// Session
 	ChatTool,
 	ChatState,
@@ -71,7 +71,14 @@ export {
 	type SessionCapability,
 	type TextNormalizationConfig,
 	type ModelStyleConfig,
-	type AIHumanModelFile
+	type AIHumanModelFile,
+	// Options types
+	type ApiKeyOptions,
+	type GetTextNormalizationOptions,
+	type GetSessionTemplateOptions,
+	type MakeTTSOptions,
+	type GetSessionInfoOptions,
+	type CreateSessionObjectOptions
 } from './PersoInteractive';
 
 // Client-side session creation (exposes API key - use with caution)

@@ -1,3 +1,4 @@
+import { resolveApiServer } from '../shared/api-server';
 import { ApiError, wrapSessionCreationApiError } from '../shared/error';
 import { PersoUtil, SessionCapabilityName } from '../shared/perso_util';
 import type { SessionTemplate } from '../shared/types';
@@ -21,39 +22,69 @@ type CreateSessionIdBody = {
 	stt_text_normalization_locale?: string | null;
 };
 
-/**
- * Requests a new session creation ID by POSTing the desired runtime options to
- * the Perso backend (`/api/v1/session/`).
- *
- * @overload Creates a session from a SessionTemplate ID. Internally calls
- * `getSessionTemplate` to resolve the template and maps it to the request body.
- * @param apiServer Perso API server URL.
- * @param apiKey API key used for authentication.
- * @param sessionTemplateId SessionTemplate ID to resolve configuration from.
- * @returns Session ID returned by the server.
- * @throws {Error} If the template's `model_style.platform_type` is not `"webrtc"`.
- * @throws {SessionCreationError} When the API returns an error during session creation.
- * @throws {DoesNotExistError} When the server response `code` is `'does_not_exist'` (subclass of `SessionCreationError`).
- * @throws {NotInOrganizationError} When the server response `code` is `'not_in_organization'` (subclass of `SessionCreationError`).
- */
+type CreateSessionIdObjectOptions =
+	| { apiKey: string; params: CreateSessionIdBody; apiServer?: string }
+	| { apiKey: string; sessionTemplateId: string; apiServer?: string };
+
+/** @overload Object-form. Uses DEFAULT_API_SERVER when apiServer is omitted. */
+export async function createSessionId(options: CreateSessionIdObjectOptions): Promise<string>;
+/** @overload Positional form — SessionTemplate ID. */
 export async function createSessionId(
 	apiServer: string,
 	apiKey: string,
 	sessionTemplateId: string
 ): Promise<string>;
-/**
- * @overload Creates a session from explicit runtime options.
- * @param apiServer Perso API server URL.
- * @param apiKey API key used for authentication.
- * @param params Runtime options for the session.
- * @returns Session ID returned by the server.
- */
+/** @overload Positional form — explicit params. */
 export async function createSessionId(
 	apiServer: string,
 	apiKey: string,
 	params: CreateSessionIdBody
 ): Promise<string>;
+/**
+ * Requests a new session creation ID by POSTing the desired runtime options to
+ * the Perso backend (`/api/v1/session/`).
+ *
+ * @param apiServerOrOptions Either the Perso API server URL (positional) or an
+ *   options object containing `apiKey`, `params|sessionTemplateId`, and
+ *   optional `apiServer` (defaults to `https://platform.perso.ai`).
+ * @param apiKey API key used for authentication (positional form only).
+ * @param paramsOrTemplateId Runtime options for the session, or a
+ *   SessionTemplate ID to resolve configuration from (positional form only).
+ * @returns Session ID returned by the server.
+ * @throws {Error} If a SessionTemplate's `model_style.platform_type` is not `"webrtc"`.
+ * @throws {SessionCreationError} When the API returns an error during session creation.
+ * @throws {DoesNotExistError} When the server response `code` is `'does_not_exist'` (subclass of `SessionCreationError`).
+ * @throws {NotInOrganizationError} When the server response `code` is `'not_in_organization'` (subclass of `SessionCreationError`).
+ */
 export async function createSessionId(
+	apiServerOrOptions: string | CreateSessionIdObjectOptions,
+	apiKey?: string,
+	paramsOrTemplateId?: CreateSessionIdBody | string
+): Promise<string> {
+	let resolvedApiServer: string;
+	let resolvedApiKey: string;
+	let resolvedParamsOrTemplateId: CreateSessionIdBody | string;
+
+	if (typeof apiServerOrOptions === 'object') {
+		const options = apiServerOrOptions;
+		resolvedApiServer = resolveApiServer(options.apiServer);
+		resolvedApiKey = options.apiKey;
+		resolvedParamsOrTemplateId =
+			'sessionTemplateId' in options ? options.sessionTemplateId : options.params;
+	} else {
+		resolvedApiServer = resolveApiServer(apiServerOrOptions);
+		resolvedApiKey = apiKey as string;
+		resolvedParamsOrTemplateId = paramsOrTemplateId as CreateSessionIdBody | string;
+	}
+
+	return await createSessionIdInternal(
+		resolvedApiServer,
+		resolvedApiKey,
+		resolvedParamsOrTemplateId
+	);
+}
+
+async function createSessionIdInternal(
 	apiServer: string,
 	apiKey: string,
 	paramsOrTemplateId: CreateSessionIdBody | string
@@ -145,20 +176,58 @@ type PromptMetadata = {
 	intro_message: string;
 };
 
+type GetIntroMessageObjectOptions = {
+	apiKey: string;
+	promptId: string;
+	apiServer?: string;
+};
+
+/** @overload Object-form. Uses DEFAULT_API_SERVER when apiServer is omitted. */
+export async function getIntroMessage(options: GetIntroMessageObjectOptions): Promise<string>;
+/** @overload Positional form. */
+export async function getIntroMessage(
+	apiServer: string,
+	apiKey: string,
+	promptId: string
+): Promise<string>;
 /**
  * Retrieves the intro message for a specific prompt.
- * @param apiServer Perso API server URL.
- * @param apiKey API key used for authentication.
- * @param promptId The prompt ID to fetch intro message for.
+ *
+ * @param apiServerOrOptions Either the Perso API server URL (positional) or an
+ *   options object containing `apiKey`, `promptId`, and optional `apiServer`
+ *   (defaults to `https://platform.perso.ai`).
+ * @param apiKey API key used for authentication (positional form only).
+ * @param promptId The prompt ID to fetch intro message for (positional form only).
  * @returns The intro message string.
  */
-export const getIntroMessage = async (apiServer: string, apiKey: string, promptId: string) => {
+export async function getIntroMessage(
+	apiServerOrOptions: string | GetIntroMessageObjectOptions,
+	apiKey?: string,
+	promptId?: string
+): Promise<string> {
+	let resolvedApiServer: string;
+	let resolvedApiKey: string;
+	let resolvedPromptId: string;
+
+	if (typeof apiServerOrOptions === 'object') {
+		resolvedApiServer = resolveApiServer(apiServerOrOptions.apiServer);
+		resolvedApiKey = apiServerOrOptions.apiKey;
+		resolvedPromptId = apiServerOrOptions.promptId;
+	} else {
+		resolvedApiServer = resolveApiServer(apiServerOrOptions);
+		resolvedApiKey = apiKey as string;
+		resolvedPromptId = promptId as string;
+	}
+
 	try {
-		const prompts = (await PersoUtil.getPrompts(apiServer, apiKey)) as PromptMetadata[];
-		const prompt = prompts.find((item) => item.prompt_id === promptId);
+		const prompts = (await PersoUtil.getPrompts(
+			resolvedApiServer,
+			resolvedApiKey
+		)) as PromptMetadata[];
+		const prompt = prompts.find((item) => item.prompt_id === resolvedPromptId);
 
 		if (!prompt) {
-			throw new Error(`Prompt (${promptId}) not found`, { cause: 404 });
+			throw new Error(`Prompt (${resolvedPromptId}) not found`, { cause: 404 });
 		}
 
 		return prompt.intro_message;
@@ -169,4 +238,4 @@ export const getIntroMessage = async (apiServer: string, apiKey: string, promptI
 
 		throw err;
 	}
-};
+}
