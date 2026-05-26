@@ -58,6 +58,14 @@ export default function Home() {
 					</defs>
 				</svg>
 				Next.js(React)
+				<a
+					className="api-docs-link"
+					href="https://perso-ai.github.io/perso-interactive-sdk-web/docs/api/"
+					target="_blank"
+					rel="noreferrer noopener"
+				>
+					API Docs ↗
+				</a>
 			</h1>
 
 			<LiveChat />

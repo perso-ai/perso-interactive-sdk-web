@@ -28,7 +28,8 @@
 		"test:watch": "pnpm --filter perso-interactive-sdk-web test:watch",
 		"docs:dev": "pnpm --filter @perso-interactive-sdk-web/app-docs dev",
 		"docs:build": "pnpm --filter @perso-interactive-sdk-web/app-docs build",
-		"docs:preview": "pnpm --filter @perso-interactive-sdk-web/app-docs preview"
+		"docs:preview": "pnpm --filter @perso-interactive-sdk-web/app-docs preview",
+		"docs:snapshot": "node scripts/snapshot-docs.mjs"
 	},
 	"devDependencies": {
 		"prettier-plugin-svelte": "^3.4.0"

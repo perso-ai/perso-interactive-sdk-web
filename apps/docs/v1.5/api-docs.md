@@ -1,24 +1,315 @@
 # Perso Interactive SDK details (js)
 
-The Perso Interactive SDK talks to the Perso production API server
-(`https://platform.perso.ai`) by default. All SDK calls take an options object —
-you only need to provide your API key and the call-specific arguments.
+> **API server:** Use `https://platform.perso.ai` as the Perso Interactive API server URL.
+>
+> Legacy `https://live-api.perso.ai` remains backward-compatible.
 
 ## PersoInteractive
+
+### Get LLM list
+
+```typescript
+function getLLMs(apiServer: string, apiKey: string): Promise<any>;
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `apiServer` | API Server URL |
+| `apiKey` | API Key |
+
+**Returns:** Array of LLM objects
+
+```JSON
+[
+  {
+    "name": string
+  }
+]
+```
+
+### Get TTS list
+
+```typescript
+function getTTSs(apiServer: string, apiKey: string): Promise<any>;
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `apiServer` | API Server URL |
+| `apiKey` | API Key |
+
+**Returns:** Array of TTS objects
+
+```JSON
+[
+  {
+    "name": string,
+    "service": string,
+    "speaker": string
+  }
+]
+```
+
+### Get STT list
+
+```typescript
+function getSTTs(apiServer: string, apiKey: string): Promise<any>;
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `apiServer` | API Server URL |
+| `apiKey` | API Key |
+
+**Returns:** Array of STT objects
+
+```JSON
+[
+  {
+    "name": string,
+    "service": string,
+    "options": string
+  }
+]
+```
+
+### Get ModelStyle list
+
+```typescript
+function getModelStyles(apiServer: string, apiKey: string): Promise<any>;
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `apiServer` | API Server URL |
+| `apiKey` | API Key |
+
+**Returns:** Array of ModelStyle objects
+
+```JSON
+[
+  {
+    "name": string,
+    "model": string,
+    "style": string
+  }
+]
+```
+
+### Get prompt list
+
+```typescript
+function getPrompts(apiServer: string, apiKey: string): Promise<any>;
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `apiServer` | API Server URL |
+| `apiKey` | API Key |
+
+**Returns:** Array of Prompt objects
+
+```JSON
+[
+  {
+    "name": string,
+    "description": string,
+    "prompt_id": string,
+    "system_prompt": string,
+    "require_document": boolean,
+    "intro_message": string
+  }
+]
+```
+
+### Get document list
+
+```typescript
+function getDocuments(apiServer: string, apiKey: string): Promise<any>;
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `apiServer` | API Server URL |
+| `apiKey` | API Key |
+
+**Returns:** Array of Document objects
+
+```JSON
+[
+  {
+    "document_id": string,
+    "title": string,
+    "description": string,
+    "search_count": number,
+    "processed": boolean,
+    "created_at": string, // ex) "2024-05-02T09:05:55.395Z",
+    "updated_at": string // ex) "2024-05-02T09:05:55.395Z"
+  }
+]
+```
+
+### Get background image list
+
+```typescript
+function getBackgroundImages(apiServer: string, apiKey: string): Promise<any>;
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `apiServer` | API Server URL |
+| `apiKey` | API Key |
+
+**Returns:** Array of BackgroundImage objects
+
+```JSON
+[
+  {
+    "backgroundimage_id": string,
+    "title": string,
+    "image": string,
+    "created_at": string // ex) "2024-05-02T09:05:55.395Z"
+  }
+]
+```
+
+### Get Remote MCP Server list
+
+```typescript
+function getMcpServers(apiServer: string, apiKey: string): Promise<any>;
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `apiServer` | API Server URL |
+| `apiKey` | API Key |
+
+**Returns:** Array of MCPServer objects
+
+```JSON
+[
+  {
+    "mcpserver_id": string,
+    "name": string,
+    "url": string,
+    "description": string
+  }
+]
+```
+
+### Get Text Normalization Config list
+
+```typescript
+function getTextNormalizations(apiServer: string, apiKey: string): Promise<any>;
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `apiServer` | API Server URL |
+| `apiKey` | API Key |
+
+**Returns:** Array of TextNormalizationConfig objects
+
+```JSON
+[
+  {
+    "textnormalizationconfig_id": string,
+    "name": string,
+    "created_at": string
+  }
+]
+```
+
+### Download Text Normalization Config
+
+Downloads the ruleset data file for a specific Text Normalization Config. Returns a pre-signed Blob Storage URL for the CSV file that can be downloaded directly. Supports Azure Blob Storage ETag for caching.
+
+**Top-level convenience function** (available from `perso-interactive-sdk-web/client`):
+
+```typescript
+function getTextNormalization(
+  apiServer: string,
+  apiKey: string,
+  configId: string
+): Promise<TextNormalizationDownload>;
+```
+
+**Low-level method** (available via `PersoUtilServer` from `perso-interactive-sdk-web/server`):
+
+```typescript
+PersoUtilServer.downloadTextNormalization(apiServer, apiKey, configId): Promise<TextNormalizationDownload>;
+```
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `apiServer` | Yes | API Server URL |
+| `apiKey` | Yes | API Key |
+| `configId` | Yes | TextNormalizationConfig `textnormalizationconfig_id` |
+
+**Returns:** `TextNormalizationDownload` object
+
+```typescript
+interface TextNormalizationDownload {
+  config_id: string;
+  config_name: string;
+  file_url: string;   // Pre-signed URL; use Azure Blob Storage ETag for caching
+}
+```
+
+```typescript
+import { getTextNormalization } from "perso-interactive-sdk-web/client";
+
+const download = await getTextNormalization(
+  apiServer,
+  apiKey,
+  "<textnormalizationconfig_id>"
+);
+// download.file_url → pre-signed URL to the CSV ruleset
+```
+
+### Get all settings
+
+```typescript
+function getAllSettings(apiServer: string, apiKey: string): Promise<any>;
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `apiServer` | API Server URL |
+| `apiKey` | API Key |
+
+**Returns:** Object containing all settings
+
+```JSON
+{
+  "llms": JSON, // result of getLLMs
+  "ttsTypes": JSON, // result of getTTSs
+  "sttTypes": JSON, // result of getSTTs
+  "modelStyles": JSON, // result of getModelStyles
+  "prompts": JSON, // result of getPrompts
+  "documents": JSON, // result of getDocuments
+  "backgroundImages": JSON, // result of getBackgroundImages
+  "mcpServers": JSON, // result of getMcpServers
+  "textNormalizations": JSON // result of getTextNormalizations
+}
+```
 
 ### Create session id
 
 > **Server-side only**: This function requires your API key. Always call it from your server to keep the key secret. Pass only the returned `sessionId` to the browser.
 
-Two call shapes are supported via a discriminated options object:
-
-- **Form A** — pass `params` with explicit runtime options.
-- **Form B** — pass `sessionTemplateId` to create a session from a SessionTemplate. The SDK resolves the template and maps its fields to the request body. Throws if `model_style.platform_type` is not `"webrtc"`.
-
 ```typescript
-// Form A: Create from explicit params
-function createSessionId(options: {
-  apiKey: string;
+// Overload 1: Create from a SessionTemplate ID (recommended)
+function createSessionId(
+  apiServer: string,
+  apiKey: string,
+  sessionTemplateId: string
+): Promise<string>;
+
+// Overload 2: Create from explicit params
+function createSessionId(
+  apiServer: string,
+  apiKey: string,
   params: {
     using_stf_webrtc: boolean;
     model_style: string;
@@ -36,21 +327,25 @@ function createSessionId(options: {
     text_normalization_locale?: string | null;
     stt_text_normalization_config?: string;
     stt_text_normalization_locale?: string | null;
-  };
-}): Promise<string>;
-
-// Form B: Create from a SessionTemplate ID
-function createSessionId(options: {
-  apiKey: string;
-  sessionTemplateId: string;
-}): Promise<string>;
+  }
+): Promise<string>;
 ```
 
-| Field | Required | Description |
-|-------|----------|-------------|
+**Overload 1 — `sessionTemplateId`**: Pass a SessionTemplate ID (string) as the third argument. The function internally calls `getSessionTemplate` to resolve the template and maps its fields to the request body. This is the simplest way to create a session when you have pre-configured templates.
+
+- Throws if `model_style.platform_type` is not `"webrtc"`.
+
+```typescript
+// Example: create session from template
+const sessionId = await createSessionId(apiServer, apiKey, "tmpl-abc-123");
+```
+
+**Overload 2 — `params`**: Pass an object with explicit runtime options (original behavior).
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `apiServer` | Yes | API Server URL |
 | `apiKey` | Yes | API Key |
-| `params` | Form A | Explicit runtime options (see the `params.*` table below). |
-| `sessionTemplateId` | Form B | SessionTemplate ID. The SDK resolves the template and maps its fields to the request body. Throws if `model_style.platform_type` is not `"webrtc"`. |
 | `params.using_stf_webrtc` | Yes | Whether to enable the STF WebRTC pipeline (set to `true` for the SDK demos) |
 | `params.model_style` | Yes | ModelStyle `name` |
 | `params.prompt` | Yes | Prompt `prompt_id` |
@@ -67,27 +362,6 @@ function createSessionId(options: {
 | `params.padding_left` | No | AI human horizontal position (A number between -1.0 and 1.0, default 0.0) |
 | `params.padding_top` | No | AI human vertical position (A number between 0.0 and 1.0, default 0.0) |
 | `params.padding_height` | No | The scale of AI human height; the width of the AI human cannot exceed the width of the background (A number between 0.0 and 5.0, default 1.0) |
-
-```typescript
-// Form A — from explicit params
-const sessionId = await createSessionId({
-  apiKey,
-  params: {
-    using_stf_webrtc: true,
-    model_style: "<model_style_name>",
-    prompt: "<prompt_id>",
-    llm_type: "<llm_name>",
-    tts_type: "<tts_name>",
-    stt_type: "<stt_name>",
-  },
-});
-
-// Form B — from a SessionTemplate
-const sessionId = await createSessionId({
-  apiKey,
-  sessionTemplateId: "<sessiontemplate_id>",
-});
-```
 
 **Returns:** Session ID (string)
 
@@ -113,23 +387,21 @@ const { createSessionId } = require("perso-interactive-sdk-web/server");
 
 const app = express();
 
+const API_SERVER = "https://platform.perso.ai";
 const API_KEY = process.env.PERSO_INTERACTIVE_API_KEY;
 
 app.post("/api/session", async (req, res) => {
   try {
-    const sessionId = await createSessionId({
-      apiKey: API_KEY,
-      params: {
-        using_stf_webrtc: true,
-        model_style: "<model_style_name>",
-        prompt: "<prompt_id>",
-        llm_type: "<llm_name>",
-        tts_type: "<tts_name>",
-        stt_type: "<stt_name>",
-        // text_normalization_config: "<textnormalizationconfig_id>", // optional
-        // stt_text_normalization_config: "<textnormalizationconfig_id>", // optional
-        // stt_text_normalization_locale: "ko", // optional
-      },
+    const sessionId = await createSessionId(API_SERVER, API_KEY, {
+      using_stf_webrtc: true,
+      model_style: "<model_style_name>",
+      prompt: "<prompt_id>",
+      llm_type: "<llm_name>",
+      tts_type: "<tts_name>",
+      stt_type: "<stt_name>",
+      // text_normalization_config: "<textnormalizationconfig_id>", // optional
+      // stt_text_normalization_config: "<textnormalizationconfig_id>", // optional
+      // stt_text_normalization_locale: "ko", // optional
     });
     res.json({ sessionId });
   } catch (error) {
@@ -141,10 +413,7 @@ app.post("/api/session", async (req, res) => {
 // Using a SessionTemplate (simpler — no need to specify individual options)
 app.post("/api/session-from-template", async (req, res) => {
   try {
-    const sessionId = await createSessionId({
-      apiKey: API_KEY,
-      sessionTemplateId: "<sessiontemplate_id>",
-    });
+    const sessionId = await createSessionId(API_SERVER, API_KEY, "<sessiontemplate_id>");
     res.json({ sessionId });
   } catch (error) {
     console.error("Session creation failed:", error);
@@ -165,373 +434,25 @@ import {
   createSession,
 } from "perso-interactive-sdk-web/client";
 
+const apiServer = "https://platform.perso.ai";
 const apiKey = "YOUR_API_KEY"; // ⚠️ NEVER commit or expose this in production
 
-const sessionId = await createSessionId({
-  apiKey,
-  params: {
-    using_stf_webrtc: true,
-    model_style: "<model_style_name>",
-    prompt: "<prompt_id>",
-    llm_type: "<llm_name>",
-    tts_type: "<tts_name>",
-    stt_type: "<stt_name>",
-    // text_normalization_config: "<textnormalizationconfig_id>", // optional
-    // stt_text_normalization_config: "<textnormalizationconfig_id>", // optional
-    // stt_text_normalization_locale: "ko", // optional
-  },
+const sessionId = await createSessionId(apiServer, apiKey, {
+  using_stf_webrtc: true,
+  model_style: "<model_style_name>",
+  prompt: "<prompt_id>",
+  llm_type: "<llm_name>",
+  tts_type: "<tts_name>",
+  stt_type: "<stt_name>",
+  // text_normalization_config: "<textnormalizationconfig_id>", // optional
+  // stt_text_normalization_config: "<textnormalizationconfig_id>", // optional
+  // stt_text_normalization_locale: "ko", // optional
 });
 
-const session = await createSession({
-  sessionId,
-  width: 1920,
-  height: 1080,
-  clientTools: [],
-});
-
+const session = await createSession(apiServer, sessionId, 1920, 1080, []);
 const videoEl = document.getElementById("video");
 if (videoEl instanceof HTMLVideoElement) {
   session.setSrc(videoEl);
-}
-```
-
-### Create session
-
-The `sessionId` parameter should be obtained from your server endpoint (see [Create session id](#create-session-id) above).
-
-```typescript
-function createSession(options: {
-  sessionId: string;
-  width: number;
-  height: number;
-  clientTools: Array<ChatTool>;
-}): Promise<Session>;
-```
-
-| Field | Required | Description |
-|-------|----------|-------------|
-| `sessionId` | Yes | Session ID obtained from your server |
-| `width` | Yes | AI human video width |
-| `height` | Yes | AI human video height |
-| `clientTools` | Yes | Client tools to be registered with the LLM |
-
-```typescript
-const session = await createSession({
-  sessionId,
-  width: 1920,
-  height: 1080,
-  clientTools: [],
-});
-```
-
-**Returns:** Session object
-
-### Get LLM list
-
-```typescript
-function getLLMs(options: { apiKey: string }): Promise<any>;
-```
-
-| Field | Required | Description |
-|-------|----------|-------------|
-| `apiKey` | Yes | API Key |
-
-```typescript
-const llms = await getLLMs({ apiKey });
-```
-
-**Returns:** Array of LLM objects
-
-```JSON
-[
-  {
-    "name": string
-  }
-]
-```
-
-### Get TTS list
-
-```typescript
-function getTTSs(options: { apiKey: string }): Promise<any>;
-```
-
-| Field | Required | Description |
-|-------|----------|-------------|
-| `apiKey` | Yes | API Key |
-
-```typescript
-const ttsTypes = await getTTSs({ apiKey });
-```
-
-**Returns:** Array of TTS objects
-
-```JSON
-[
-  {
-    "name": string,
-    "service": string,
-    "speaker": string
-  }
-]
-```
-
-### Get STT list
-
-```typescript
-function getSTTs(options: { apiKey: string }): Promise<any>;
-```
-
-| Field | Required | Description |
-|-------|----------|-------------|
-| `apiKey` | Yes | API Key |
-
-```typescript
-const sttTypes = await getSTTs({ apiKey });
-```
-
-**Returns:** Array of STT objects
-
-```JSON
-[
-  {
-    "name": string,
-    "service": string,
-    "options": string
-  }
-]
-```
-
-### Get ModelStyle list
-
-```typescript
-function getModelStyles(options: { apiKey: string }): Promise<any>;
-```
-
-| Field | Required | Description |
-|-------|----------|-------------|
-| `apiKey` | Yes | API Key |
-
-```typescript
-const modelStyles = await getModelStyles({ apiKey });
-```
-
-**Returns:** Array of ModelStyle objects
-
-```JSON
-[
-  {
-    "name": string,
-    "model": string,
-    "style": string
-  }
-]
-```
-
-### Get prompt list
-
-```typescript
-function getPrompts(options: { apiKey: string }): Promise<any>;
-```
-
-| Field | Required | Description |
-|-------|----------|-------------|
-| `apiKey` | Yes | API Key |
-
-```typescript
-const prompts = await getPrompts({ apiKey });
-```
-
-**Returns:** Array of Prompt objects
-
-```JSON
-[
-  {
-    "name": string,
-    "description": string,
-    "prompt_id": string,
-    "system_prompt": string,
-    "require_document": boolean,
-    "intro_message": string
-  }
-]
-```
-
-### Get document list
-
-```typescript
-function getDocuments(options: { apiKey: string }): Promise<any>;
-```
-
-| Field | Required | Description |
-|-------|----------|-------------|
-| `apiKey` | Yes | API Key |
-
-```typescript
-const documents = await getDocuments({ apiKey });
-```
-
-**Returns:** Array of Document objects
-
-```JSON
-[
-  {
-    "document_id": string,
-    "title": string,
-    "description": string,
-    "search_count": number,
-    "processed": boolean,
-    "created_at": string, // ex) "2024-05-02T09:05:55.395Z",
-    "updated_at": string // ex) "2024-05-02T09:05:55.395Z"
-  }
-]
-```
-
-### Get background image list
-
-```typescript
-function getBackgroundImages(options: { apiKey: string }): Promise<any>;
-```
-
-| Field | Required | Description |
-|-------|----------|-------------|
-| `apiKey` | Yes | API Key |
-
-```typescript
-const backgroundImages = await getBackgroundImages({ apiKey });
-```
-
-**Returns:** Array of BackgroundImage objects
-
-```JSON
-[
-  {
-    "backgroundimage_id": string,
-    "title": string,
-    "image": string,
-    "created_at": string // ex) "2024-05-02T09:05:55.395Z"
-  }
-]
-```
-
-### Get Remote MCP Server list
-
-```typescript
-function getMcpServers(options: { apiKey: string }): Promise<any>;
-```
-
-| Field | Required | Description |
-|-------|----------|-------------|
-| `apiKey` | Yes | API Key |
-
-```typescript
-const mcpServers = await getMcpServers({ apiKey });
-```
-
-**Returns:** Array of MCPServer objects
-
-```JSON
-[
-  {
-    "mcpserver_id": string,
-    "name": string,
-    "url": string,
-    "description": string
-  }
-]
-```
-
-### Get Text Normalization Config list
-
-```typescript
-function getTextNormalizations(options: { apiKey: string }): Promise<any>;
-```
-
-| Field | Required | Description |
-|-------|----------|-------------|
-| `apiKey` | Yes | API Key |
-
-```typescript
-const textNormalizations = await getTextNormalizations({ apiKey });
-```
-
-**Returns:** Array of TextNormalizationConfig objects
-
-```JSON
-[
-  {
-    "textnormalizationconfig_id": string,
-    "name": string,
-    "created_at": string
-  }
-]
-```
-
-### Download Text Normalization Config
-
-Downloads the ruleset data file for a specific Text Normalization Config. Returns a pre-signed Blob Storage URL for the CSV file that can be downloaded directly. Supports Azure Blob Storage ETag for caching.
-
-**Top-level convenience function** (available from `perso-interactive-sdk-web/client`).
-
-```typescript
-function getTextNormalization(options: {
-  apiKey: string;
-  configId: string;
-}): Promise<TextNormalizationDownload>;
-```
-
-| Field | Required | Description |
-|-------|----------|-------------|
-| `apiKey` | Yes | API Key |
-| `configId` | Yes | TextNormalizationConfig `textnormalizationconfig_id` |
-
-```typescript
-import { getTextNormalization } from "perso-interactive-sdk-web/client";
-
-const download = await getTextNormalization({
-  apiKey,
-  configId: "<textnormalizationconfig_id>",
-});
-// download.file_url → pre-signed URL to the CSV ruleset
-```
-
-**Returns:** `TextNormalizationDownload` object
-
-```typescript
-interface TextNormalizationDownload {
-  config_id: string;
-  config_name: string;
-  file_url: string;   // Pre-signed URL; use Azure Blob Storage ETag for caching
-}
-```
-
-### Get all settings
-
-```typescript
-function getAllSettings(options: { apiKey: string }): Promise<any>;
-```
-
-| Field | Required | Description |
-|-------|----------|-------------|
-| `apiKey` | Yes | API Key |
-
-```typescript
-const settings = await getAllSettings({ apiKey });
-```
-
-**Returns:** Object containing all settings
-
-```JSON
-{
-  "llms": JSON, // result of getLLMs
-  "ttsTypes": JSON, // result of getTTSs
-  "sttTypes": JSON, // result of getSTTs
-  "modelStyles": JSON, // result of getModelStyles
-  "prompts": JSON, // result of getPrompts
-  "documents": JSON, // result of getDocuments
-  "backgroundImages": JSON, // result of getBackgroundImages
-  "mcpServers": JSON, // result of getMcpServers
-  "textNormalizations": JSON // result of getTextNormalizations
 }
 ```
 
@@ -540,22 +461,18 @@ const settings = await getAllSettings({ apiKey });
 > **Server-side only**: This function requires your API key.
 
 ```typescript
-function getIntroMessage(options: {
-  apiKey: string;
-  promptId: string;
-}): Promise<string>;
+function getIntroMessage(
+  apiServer: string,
+  apiKey: string,
+  promptId: string
+): Promise<string>;
 ```
 
-| Field | Required | Description |
-|-------|----------|-------------|
-| `apiKey` | Yes | API Key |
-| `promptId` | Yes | The prompt ID to fetch intro message for |
-
-```typescript
-import { getIntroMessage } from "perso-interactive-sdk-web/server";
-
-const intro = await getIntroMessage({ apiKey, promptId: "<prompt_id>" });
-```
+| Parameter   | Required | Description                              |
+|-------------|----------|------------------------------------------|
+| `apiServer` | Yes      | API Server URL                           |
+| `apiKey`    | Yes      | API Key                                  |
+| `promptId`  | Yes      | The prompt ID to fetch intro message for |
 
 **Returns:** The intro message string for the given prompt.
 
@@ -563,21 +480,25 @@ const intro = await getIntroMessage({ apiKey, promptId: "<prompt_id>" });
 - `Error` with `cause: 404` if the prompt is not found
 - `Error` with the API error detail if an `ApiError` occurs
 
+```typescript
+import { getIntroMessage } from "perso-interactive-sdk-web/server";
+
+const intro = await getIntroMessage(apiServer, apiKey, "<prompt_id>");
+```
+
 ### Get Session Template list
 
 ```typescript
-function getSessionTemplates(options: {
-  apiKey: string;
-}): Promise<SessionTemplate[]>;
+function getSessionTemplates(
+  apiServer: string,
+  apiKey: string
+): Promise<SessionTemplate[]>;
 ```
 
-| Field | Required | Description |
-|-------|----------|-------------|
-| `apiKey` | Yes | API Key |
-
-```typescript
-const templates = await getSessionTemplates({ apiKey });
-```
+| Parameter | Description |
+|-----------|-------------|
+| `apiServer` | API Server URL |
+| `apiKey` | API Key |
 
 **Returns:** Array of SessionTemplate objects
 
@@ -687,55 +608,42 @@ const templates = await getSessionTemplates({ apiKey });
 > **Server-side only**: This function requires your API key.
 
 ```typescript
-function getSessionTemplate(options: {
-  apiKey: string;
-  sessionTemplateId: string;
-}): Promise<SessionTemplate>;
+function getSessionTemplate(
+  apiServer: string,
+  apiKey: string,
+  sessionTemplateId: string
+): Promise<SessionTemplate>;
 ```
 
-| Field | Required | Description |
-|-------|----------|-------------|
-| `apiKey` | Yes | API Key |
-| `sessionTemplateId` | Yes | Session Template ID |
-
-```typescript
-const template = await getSessionTemplate({
-  apiKey,
-  sessionTemplateId: "<sessiontemplate_id>",
-});
-```
+| Parameter | Description |
+|-----------|-------------|
+| `apiServer` | API Server URL |
+| `apiKey` | API Key |
+| `sessionTemplateId` | Session Template ID |
 
 **Returns:** A single SessionTemplate object (same schema as array element above)
 
 ### Make TTS
 
 ```typescript
-function makeTTS(options: {
-  sessionId: string;
-  text: string;
-  locale?: string;
-  output_format?: string;
-}): Promise<{ audio: string }>;
+function makeTTS(
+  apiServer: string,
+  params: {
+    sessionId: string;
+    text: string;
+    locale?: string;
+    output_format?: string;
+  }
+): Promise<{ audio: string }>;
 ```
 
-| Field | Required | Description |
-|-------|----------|-------------|
-| `sessionId` | Yes | Active session ID |
-| `text` | Yes | Text to synthesize |
-| `locale` | No | Language/locale code for TTS (e.g., `"ko"`, `"en"`) |
-| `output_format` | No | Audio output format (e.g., `"wav"`) |
-
-```typescript
-import { makeTTS } from "perso-interactive-sdk-web/client";
-
-const result = await makeTTS({
-  sessionId: "<session_id>",
-  text: "Hello, world!",
-  locale: "en",         // optional
-  output_format: "wav", // optional
-});
-// result.audio contains Base64-encoded audio data
-```
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `apiServer` | Yes | API Server URL |
+| `params.sessionId` | Yes | Active session ID |
+| `params.text` | Yes | Text to synthesize |
+| `params.locale` | No | Language/locale code for TTS (e.g., `"ko"`, `"en"`) |
+| `params.output_format` | No | Audio output format (e.g., `"wav"`) |
 
 **Returns:** Object with Base64-encoded audio string
 
@@ -743,6 +651,18 @@ const result = await makeTTS({
 {
   "audio": string
 }
+```
+
+```typescript
+import { makeTTS } from "perso-interactive-sdk-web/client";
+
+const result = await makeTTS(apiServer, {
+  sessionId: "<session_id>",
+  text: "Hello, world!",
+  locale: "en",         // optional
+  output_format: "wav", // optional
+});
+// result.audio contains Base64-encoded audio data
 ```
 
 ### PersoUtilServer
@@ -753,21 +673,40 @@ Server-side alias for the internal `PersoUtil` class. Exposes low-level static m
 for direct API calls (e.g., `getLLMs`, `getPrompts`, `getModelStyles`).
 Most users should prefer the top-level convenience functions instead.
 
+### Create session
+
+The `sessionId` parameter should be obtained from your server endpoint (see [Create session id](#create-session-id) above).
+
+```typescript
+function createSession(
+  apiServer: string,
+  sessionId: string,
+  width: number,
+  height: number,
+  clientTools: Array<ChatTool>
+): Promise<Session>;
+```
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `apiServer` | Yes | API Server URL |
+| `sessionId` | Yes | Session ID obtained from your server |
+| `width` | Yes | AI human video width |
+| `height` | Yes | AI human video height |
+| `clientTools` | Yes | Client tools to be registered with the LLM |
+
+**Returns:** Session object
+
 ### Get session info
 
 ```typescript
-function getSessionInfo(options: {
-  sessionId: string;
-}): Promise<any>;
+function getSessionInfo(apiServer: string, sessionId: string): Promise<any>;
 ```
 
-| Field | Required | Description |
-|-------|----------|-------------|
-| `sessionId` | Yes | Session ID |
-
-```typescript
-const info = await getSessionInfo({ sessionId });
-```
+| Parameter | Description |
+|-----------|-------------|
+| `apiServer` | API Server URL |
+| `sessionId` | Session ID |
 
 **Returns:** Session info object
 
@@ -1670,7 +1609,7 @@ import {
 } from 'perso-interactive-sdk-web/server';
 
 try {
-  const sessionId = await createSessionId({ apiKey, params });
+  const sessionId = await createSessionId(apiServer, apiKey, params);
 } catch (err) {
   if (err instanceof DoesNotExistError) {
     // e.g. invalid prompt_id — err.attr identifies which input field.

@@ -36,7 +36,6 @@ export default function LiveChat() {
 	const [error, setError] = useState('');
 
 	const sessionRef = useRef<Session | null>(null);
-	const apiServerUrlRef = useRef('');
 	const sessionIdRef = useRef('');
 	const unsubscribesRef = useRef<Array<() => void>>([]);
 
@@ -69,13 +68,12 @@ export default function LiveChat() {
 				const json = await response.json();
 				if (cancelled) return;
 
-				const sess = await createSession(
-					json.persoInteractiveApiServerUrl,
-					json.sessionId,
-					CHATBOT_WIDTH,
-					CHATBOT_HEIGHT,
+				const sess = await createSession({
+					sessionId: json.sessionId,
+					width: CHATBOT_WIDTH,
+					height: CHATBOT_HEIGHT,
 					clientTools
-				);
+				});
 
 				if (cancelled) {
 					sess.stopSession();
@@ -83,7 +81,6 @@ export default function LiveChat() {
 				}
 
 				sessionRef.current = sess;
-				apiServerUrlRef.current = json.persoInteractiveApiServerUrl;
 				sessionIdRef.current = json.sessionId;
 				setSession(sess);
 				setSessionState(2);
@@ -113,7 +110,7 @@ export default function LiveChat() {
 				const removeOnClose = sess.onClose((manualClosed: boolean) => {
 					if (!manualClosed) {
 						setTimeout(() => {
-							getSessionInfo(apiServerUrlRef.current, sessionIdRef.current)
+							getSessionInfo({ sessionId: sessionIdRef.current })
 								.then((res: { termination_reason?: string }) => {
 									if (res.termination_reason) {
 										alert(res.termination_reason);

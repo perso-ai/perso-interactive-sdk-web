@@ -264,7 +264,7 @@ async function getConfig() {
 	authorizeBtn.innerText = 'Loading...';
 
 	try {
-		config = await PersoInteractive.getAllSettings(apiServer, apiKey);
+		config = await PersoInteractive.getAllSettings({ apiKey, apiServer });
 	} catch (e) {
 		authorizeBtn.disabled = false;
 		authorizeBtn.innerText = 'Authorize';
@@ -485,27 +485,31 @@ async function startSession() {
 	const videoElement = document.getElementById('video');
 
 	try {
-		const sessionId = await PersoInteractive.createSessionId(apiServer, apiKey, {
-			using_stf_webrtc: true,
-			model_style: modelStyleKey,
-			prompt: promptKey,
-			document: documentKey,
-			background_image: backgroundImageKey,
-			mcp_servers: mcpServersKey,
-			padding_left: chatbotLeft / 100,
-			padding_top: chatbotTop / 100,
-			padding_height: chatbotHeight / 100,
-			llm_type: llmTypeKey,
-			tts_type: ttsTypeKey,
-			stt_type: sttTypeKey
+		const sessionId = await PersoInteractive.createSessionId({
+			apiKey,
+			params: {
+				using_stf_webrtc: true,
+				model_style: modelStyleKey,
+				prompt: promptKey,
+				document: documentKey,
+				background_image: backgroundImageKey,
+				mcp_servers: mcpServersKey,
+				padding_left: chatbotLeft / 100,
+				padding_top: chatbotTop / 100,
+				padding_height: chatbotHeight / 100,
+				llm_type: llmTypeKey,
+				tts_type: ttsTypeKey,
+				stt_type: sttTypeKey
+			},
+			apiServer
 		});
-		session = await PersoInteractive.createSession(
-			apiServer,
+		session = await PersoInteractive.createSession({
 			sessionId,
 			width,
 			height,
-			selectedClientTools
-		);
+			clientTools: selectedClientTools,
+			apiServer
+		});
 
 		session.setSrc(videoElement);
 
@@ -513,6 +517,7 @@ async function startSession() {
 
 		applySessionState(2);
 	} catch (e) {
+		console.error('Session creation failed:', e);
 		alert(e);
 		applySessionState(0);
 		return;
@@ -543,7 +548,7 @@ async function startSession() {
 	removeOnClose = session.onClose((manualClosed) => {
 		if (!manualClosed) {
 			setTimeout(() => {
-				PersoInteractive.getSessionInfo(apiServer, session.getSessionId())
+				PersoInteractive.getSessionInfo({ sessionId: session.getSessionId(), apiServer })
 					.then((response) => {
 						alert(response.termination_reason);
 					})

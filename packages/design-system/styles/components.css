@@ -285,3 +285,26 @@
 	align-items: center;
 	gap: 12px;
 }
+
+/* Outline button used next to the demo title to jump to the API docs. */
+.api-docs-link {
+	margin-left: 12px;
+	padding: 4px 10px;
+	font-size: 0.45em;
+	font-weight: 500;
+	vertical-align: middle;
+	border: 1px solid currentColor;
+	border-radius: 6px;
+	text-decoration: none;
+	opacity: 0.65;
+	color: inherit;
+}
+
+.api-docs-link:hover {
+	opacity: 1;
+}
+
+.api-docs-link:focus-visible {
+	outline: 2px solid currentColor;
+	outline-offset: 2px;
+}

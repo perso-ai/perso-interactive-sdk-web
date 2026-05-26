@@ -59,6 +59,14 @@
 			/>
 		</svg>
 		Svelte
+		<a
+			class="api-docs-link"
+			href="https://perso-ai.github.io/perso-interactive-sdk-web/docs/api/"
+			target="_blank"
+			rel="noreferrer noopener"
+		>
+			API Docs ↗
+		</a>
 	</h1>
 
 	{#if sessionError}

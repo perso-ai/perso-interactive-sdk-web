@@ -1,10 +1,18 @@
+---
+search: false
+---
+
+::: warning Archived version
+You're viewing **v1.5**. The latest version is **[here](/guide/getting-started.md)**.
+:::
+
 # Getting Started
 
 The Perso Interactive SDK lets you embed a real-time, WebRTC-based AI avatar
 session in a web app, with LLM chat, TTS/STT, and client-side tool calls.
 
 This page is a short orientation. For the complete API surface, see the
-[API Reference](/api/).
+[API Reference](/v1.5/api/).
 
 ## Install
 
@@ -33,50 +41,13 @@ Never call the server-only `createSessionId` from browser code with a real API
 key. Create the session id on your server and pass only the id to the client.
 :::
 
-## Quick start
-
-The two functions you need are `createSessionId` (server) and `createSession`
-(browser). Both take a single options object — no API server URL to wire up.
-
-```ts
-// --- Server (Node.js) ---
-import { createSessionId } from 'perso-interactive-sdk-web/server';
-
-const sessionId = await createSessionId({
-  apiKey: process.env.PERSO_INTERACTIVE_API_KEY!,
-  params: {
-    using_stf_webrtc: true,
-    model_style: '<model_style_name>',
-    prompt: '<prompt_id>',
-    llm_type: '<llm_name>',
-    tts_type: '<tts_name>',
-    stt_type: '<stt_name>',
-  },
-});
-// Return `sessionId` to the browser via your API endpoint.
-```
-
-```ts
-// --- Browser ---
-import { createSession } from 'perso-interactive-sdk-web/client';
-
-const session = await createSession({
-  sessionId,           // received from your server endpoint
-  width: 1920,
-  height: 1080,
-  clientTools: [],
-});
-
-session.setSrc(document.getElementById('video') as HTMLVideoElement);
-```
-
 ## Minimal flow
 
 1. Fetch settings (LLMs, TTSs, STTs, model styles, prompts, …) from the API
-   server using the helpers under `PersoInteractive` — e.g. `getAllSettings({ apiKey })`.
-2. On your server, call `createSessionId({ apiKey, params })` (or pass
-   `sessionTemplateId` instead of `params`) and return the id to the browser.
-3. In the browser, call `createSession({ sessionId, width, height, clientTools })`.
+   server using the helpers under `PersoInteractive`.
+2. On your server, call `createSessionId(apiServer, apiKey, config)` and return
+   the id to the browser.
+3. In the browser, call `createSession(apiServer, sessionId, width, height, clientTools)`.
 4. Bind media: `session.setSrc(videoElement)` or use `session.getRemoteStream()`.
 5. Subscribe to state and chat log:
    - `session.subscribeChatStates(handler)`
@@ -140,7 +111,7 @@ session.stopSession();               // tear down WebRTC + media
 
 ## Where to go next
 
-- [API Reference](/api/) — full function/type signatures, return shapes, and
+- [API Reference](/v1.5/api/) — full function/type signatures, return shapes, and
   error hierarchy.
 - [README on npm](https://www.npmjs.com/package/perso-interactive-sdk-web) —
   quick install snippets and project links.

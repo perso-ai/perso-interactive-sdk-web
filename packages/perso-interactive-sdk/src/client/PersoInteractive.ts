@@ -23,6 +23,7 @@ import {
 	type ProcessLLMOptions
 } from './types';
 import { createSession as cs, Session } from './session';
+import { DEFAULT_API_SERVER, resolveApiServer } from '../shared/api-server';
 import {
 	LlmProcessor,
 	type LlmProcessorCallbacks,
@@ -63,7 +64,24 @@ export {
 	makeTTS,
 	getSessionInfo
 } from '../shared/settings';
+export type {
+	ApiKeyOptions,
+	GetTextNormalizationOptions,
+	GetSessionTemplateOptions,
+	MakeTTSOptions,
+	GetSessionInfoOptions
+} from '../shared/settings';
 
+export type CreateSessionObjectOptions = {
+	sessionId: string;
+	width: number;
+	height: number;
+	clientTools: Array<ChatTool>;
+	apiServer?: string;
+};
+
+/** @overload Object-form. Uses DEFAULT_API_SERVER when apiServer is omitted. */
+export function createSession(options: CreateSessionObjectOptions): Promise<Session>;
 /**
  * Creates a Session with REST-based STT/TTS (current mode).
  */
@@ -88,15 +106,44 @@ export function createSession(
 	clientTools: Array<ChatTool>
 ): Promise<Session>;
 export async function createSession(
-	apiServer: string,
-	sessionId: string,
-	width: number,
-	height: number,
-	enableVoiceChatOrClientTools: boolean | Array<ChatTool>,
+	apiServerOrOptions: string | CreateSessionObjectOptions,
+	sessionId?: string,
+	width?: number,
+	height?: number,
+	enableVoiceChatOrClientTools?: boolean | Array<ChatTool>,
 	clientTools?: Array<ChatTool>
 ): Promise<Session> {
-	if (typeof enableVoiceChatOrClientTools === 'boolean') {
-		return await cs(apiServer, sessionId, width, height, enableVoiceChatOrClientTools, clientTools ?? []);
+	if (typeof apiServerOrOptions === 'object') {
+		const options = apiServerOrOptions;
+		const resolved = resolveApiServer(options.apiServer);
+		return await cs(
+			resolved,
+			options.sessionId,
+			options.width,
+			options.height,
+			options.clientTools
+		);
 	}
-	return await cs(apiServer, sessionId, width, height, enableVoiceChatOrClientTools);
+
+	const resolvedApiServer = resolveApiServer(apiServerOrOptions);
+
+	if (typeof enableVoiceChatOrClientTools === 'boolean') {
+		return await cs(
+			resolvedApiServer,
+			sessionId as string,
+			width as number,
+			height as number,
+			enableVoiceChatOrClientTools,
+			clientTools ?? []
+		);
+	}
+	return await cs(
+		resolvedApiServer,
+		sessionId as string,
+		width as number,
+		height as number,
+		enableVoiceChatOrClientTools as Array<ChatTool>
+	);
 }
+
+export { DEFAULT_API_SERVER };

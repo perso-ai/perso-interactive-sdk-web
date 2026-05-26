@@ -4,17 +4,24 @@
  *
  * @example
  * ```typescript
- * import { createSessionId, getIntroMessage, getAllSettings } from 'perso-interactive-sdk-web/server';
+ * import {
+ *   createSessionId,
+ *   getIntroMessage,
+ *   getAllSettings
+ * } from 'perso-interactive-sdk-web/server';
  *
- * const settings = await getAllSettings(apiServer, apiKey);
+ * const settings = await getAllSettings({ apiKey });
  *
- * const sessionId = await createSessionId(apiServer, apiKey, {
- *   using_stf_webrtc: true,
- *   model_style: settings.modelStyles[0].name,
- *   prompt: settings.prompts[0].prompt_id,
- *   llm_type: settings.llms[0].name,
- *   tts_type: settings.ttsTypes[0].name,
- *   stt_type: settings.sttTypes[0].name,
+ * const sessionId = await createSessionId({
+ *   apiKey,
+ *   params: {
+ *     using_stf_webrtc: true,
+ *     model_style: settings.modelStyles[0].name,
+ *     prompt: settings.prompts[0].prompt_id,
+ *     llm_type: settings.llms[0].name,
+ *     tts_type: settings.ttsTypes[0].name,
+ *     stt_type: settings.sttTypes[0].name
+ *   }
  * });
  * ```
  */
@@ -37,6 +44,14 @@ export {
 	makeTTS,
 	getSessionInfo
 } from '../shared/settings';
+export type {
+	ApiKeyOptions,
+	GetTextNormalizationOptions,
+	GetSessionTemplateOptions,
+	MakeTTSOptions,
+	GetSessionInfoOptions
+} from '../shared/settings';
+export { DEFAULT_API_SERVER } from '../shared/api-server';
 export { PersoUtil as PersoUtilServer } from '../shared/perso_util';
 export {
 	ApiError,
