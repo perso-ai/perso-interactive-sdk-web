@@ -261,4 +261,4 @@ For detailed API documentation, see the **[API Reference](https://perso-ai.githu
 
 # License
 
-Perso Interactive SDK for Web is commercial software. [Contact our sales team](https://perso.ai/contact).
+Perso Interactive SDK for Web is commercial software. [Contact our sales team](https://platform.perso.ai/contact/).
