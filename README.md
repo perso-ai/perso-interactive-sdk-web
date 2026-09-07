@@ -254,7 +254,7 @@ const session = await createSession({
 
 ## API Reference
 
-For detailed API documentation, see the **[API Reference](https://perso-ai.github.io/perso-interactive-sdk-web/docs/api/)**.
+For detailed API documentation, see the **[API Reference](https://perso-ai.github.io/perso-interactive-sdk-web/docs/)**.
 
 # License
 
