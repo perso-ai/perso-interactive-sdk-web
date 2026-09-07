@@ -17,9 +17,11 @@ pnpm install
 pnpm typescript
 ```
 
+> **Security Warning**: This demo calls `createSessionId` directly in the browser (`src/index.ts`) for convenience only, which exposes your API key to anyone who opens the page. Never do this in production — create sessions server-side and pass only the `sessionId` to the client, as the `apps/svelte` and `apps/nextjs` demos do.
+
 When the page loads:
 
 1. Enter the Perso Interactive API server URL and API key.
-2. Click **Authenticate** to fetch the available LLM, TTS/STT, prompt, document, and MCP options.
+2. Click **Authorize** to fetch the available LLM, TTS/STT, prompt, document, and MCP options.
 3. Configure the desired session settings, padding, and client tools.
 4. Press **START** to initialize Perso Interactive through the Web SDK.

@@ -1,6 +1,6 @@
 import { PersoUtil, type TextNormalizationDownload } from './perso_util';
 import { resolveApiServer } from './api-server';
-import type { SessionTemplate } from './types';
+import type { SessionTemplate, TTSOutputFormat, TTSResponse } from './types';
 
 export type ApiKeyOptions = { apiKey: string; apiServer?: string };
 
@@ -449,13 +449,14 @@ type MakeTTSParams = {
 	sessionId: string;
 	text: string;
 	locale?: string;
-	output_format?: string;
+	output_format?: TTSOutputFormat;
 };
 
 export type MakeTTSOptions = MakeTTSParams & { apiServer?: string };
 
 /**
- * Sends text to the TTS API and returns Base64-encoded audio.
+ * Sends text to the TTS API and returns the synthesized audio together with the
+ * locale it resolved to and the text as normalization rewrote it.
  *
  * @param options.sessionId Identifier of the active session.
  * @param options.text Text to synthesize.
@@ -463,24 +464,46 @@ export type MakeTTSOptions = MakeTTSParams & { apiServer?: string };
  * @param options.output_format Optional output audio format.
  * @param options.apiServer Perso API server URL. Defaults to `https://platform.perso.ai`.
  */
-export async function makeTTS(options: MakeTTSOptions): Promise<{ audio: string }>;
+export async function makeTTS(options: MakeTTSOptions): Promise<TTSResponse>;
 /**
  * @param apiServer Perso API server URL.
  * @param params TTS request parameters (`sessionId`, `text`, optional `locale`, `output_format`).
  */
-export async function makeTTS(
-	apiServer: string,
-	params: MakeTTSParams
-): Promise<{ audio: string }>;
+export async function makeTTS(apiServer: string, params: MakeTTSParams): Promise<TTSResponse>;
 export async function makeTTS(
 	arg1: string | MakeTTSOptions,
 	arg2?: MakeTTSParams
-): Promise<{ audio: string }> {
+): Promise<TTSResponse> {
 	if (typeof arg1 === 'object') {
 		const { apiServer, ...params } = arg1;
 		return await PersoUtil.makeTTS(resolveApiServer(apiServer), params);
 	}
 	return await PersoUtil.makeTTS(resolveApiServer(arg1), arg2 as MakeTTSParams);
+}
+
+/**
+ * A streaming TTS response: the PCM chunks plus the format facts the wire
+ * leaves out.
+ *
+ * `sampleRate` and `channels` are carried here rather than left to the caller
+ * because the chunks cannot supply them — a `tts.chunk` frame carries only raw
+ * little-endian 16-bit PCM bytes, and the rate the terminal `tts.finish`
+ * reports arrives after the audio it describes. Pair the chunks with
+ * `PcmStreamDecoder`, which also handles the split samples that chunk
+ * boundaries produce.
+ */
+export interface StreamingTTSStream extends AsyncIterable<Uint8Array> {
+	/** Sample rate of the PCM the chunks carry. */
+	readonly sampleRate: number;
+	/** Channel count of the PCM the chunks carry. */
+	readonly channels: number;
+	/**
+	 * Abandons the stream, stopping synthesis server-side where possible.
+	 *
+	 * Safe to call at any point, including mid-iteration or after completion;
+	 * iterating a cancelled stream yields nothing.
+	 */
+	cancel(): Promise<void>;
 }
 
 export type GetSessionInfoOptions = { sessionId: string; apiServer?: string };

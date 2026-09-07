@@ -1,4 +1,4 @@
-import { Timeout } from '../shared/error';
+import { STFError, Timeout } from '../shared/error';
 import { PersoUtil, SessionCapabilityName, SessionEvent } from '../shared/perso_util';
 import { decodeTTSAudio } from '../shared/audio';
 
@@ -41,7 +41,15 @@ export class Perso extends EventTarget {
 		});
 		this.dc.onopen = () => {
 			this.pingIntervalId = setInterval(() => {
-				this.ping();
+				// A tick can land while the channel is already closing, and this runs
+				// on a timer where a throw is an uncaught exception once per second
+				// instead of something a caller can handle. Stopping the keepalive is
+				// the whole response: `onclose` and the timeout below close the rest.
+				try {
+					this.ping();
+				} catch {
+					return;
+				}
 				if (Date.now() - this.pingTime > 30000) {
 					this.close();
 				}
@@ -51,6 +59,18 @@ export class Perso extends EventTarget {
 			if (this.pingIntervalId != null) {
 				clearInterval(this.pingIntervalId);
 			}
+			// The control channel is the only way to reach the avatar, so losing it
+			// ends the session for every practical purpose. Reporting it keeps the
+			// heartbeat from holding a session nobody can talk to, and lets
+			// `onClose` subscribers react. Previously only a failed PeerConnection
+			// or an explicit teardown emitted this, so a server that dropped just
+			// the channel left the SDK believing everything was fine until the next
+			// frame threw.
+			this.#changeStatus({
+				live: false,
+				code: 503,
+				reason: 'Control channel closed'
+			});
 		};
 
 		this.#changeStatus({
@@ -230,6 +250,17 @@ export class Perso extends EventTarget {
 	 * @param data Arbitrary JSON-serializable payload.
 	 */
 	sendMessage(type: string, data: object) {
+		// Without this the browser raises a bare `InvalidStateError` DOMException,
+		// which tells the caller nothing about which frame failed and is not one
+		// of the SDK's error types. The channel can be gone without the session
+		// being gone: the server may drop it while the PeerConnection stays up.
+		if (this.dc.readyState !== 'open') {
+			throw new STFError(
+				`control channel is not open (readyState=${this.dc.readyState}), dropped "${type}"`,
+				'channel_closed'
+			);
+		}
+
 		this.dc.send(
 			JSON.stringify({
 				type,
@@ -248,115 +279,36 @@ export class Perso extends EventTarget {
 		});
 	}
 
-	private static readonly BACKPRESSURE_THRESHOLD = 524288; // 512KB
-
-	private static readonly FILE_TRANSFER_TIMEOUT = 30000; // 30s
-
 	/**
-	 * Sends a file to the remote peer via a dedicated WebRTC data channel.
-	 * The file is chunked and transmitted in binary format. Applies
-	 * backpressure when the channel's buffer exceeds 512 KB to avoid
-	 * SCTP overflow on large files.
-	 * @param file The file blob to send.
-	 * @param chunksize Size of each chunk in bytes (default: 65536).
-	 * @returns Promise resolving to the file reference string from the server.
+	 * Opens a streaming STF turn — the only way audio reaches the server.
+	 *
+	 * The server starts lip-syncing the audio that follows before it has seen
+	 * the end of it. Send the audio with `stfStreamingData()` and close the turn
+	 * with `stfStreamingEnd()`.
+	 *
+	 * @param message Optional caption echoed back on the server's `stf` response.
 	 */
-	sendFile(file: Blob, chunksize = 65536): Promise<string> {
-		return new Promise((resolve, reject) => {
-			let settled = false;
-			const settle = (fn: () => void) => {
-				if (settled) return;
-				settled = true;
-				clearTimeout(timeout);
-				fn();
-			};
-
-			const fileChannel = this.pc.createDataChannel('file', {
-				protocol: 'file'
-			});
-
-			const timeout = setTimeout(() => {
-				settle(() => {
-					fileChannel.close();
-					reject(new Error('File transfer timed out'));
-				});
-			}, Perso.FILE_TRANSFER_TIMEOUT);
-
-			fileChannel.onclose = () => {
-				settle(() => {
-					reject(new Error('File channel closed before transfer completed'));
-				});
-			};
-
-			fileChannel.onerror = (error) => {
-				settle(() => {
-					fileChannel.close();
-					reject(new Error(`File channel error: ${error}`));
-				});
-			};
-
-			fileChannel.addEventListener('message', async (event: MessageEvent) => {
-				try {
-					if (event.data.length === 0) {
-						const data = new Uint8Array(await file.arrayBuffer());
-						let offset = 0;
-						const sendChunks = (): void => {
-							while (offset < data.length) {
-								if (fileChannel.bufferedAmount > Perso.BACKPRESSURE_THRESHOLD) {
-									fileChannel.bufferedAmountLowThreshold = Perso.BACKPRESSURE_THRESHOLD / 2;
-									fileChannel.onbufferedamountlow = () => {
-										fileChannel.onbufferedamountlow = null;
-										fileChannel.onclose = null;
-										sendChunks();
-									};
-									fileChannel.onclose = () => {
-										fileChannel.onbufferedamountlow = null;
-										settle(() => {
-											reject(new Error('File channel closed during transfer'));
-										});
-									};
-									return;
-								}
-								fileChannel.send(data.slice(offset, offset + chunksize));
-								offset += chunksize;
-							}
-							fileChannel.send(new Uint8Array(0)); // EOF
-						};
-
-						sendChunks();
-					} else {
-						settle(() => {
-							fileChannel.close();
-							resolve(event.data);
-						});
-					}
-				} catch (error) {
-					settle(() => {
-						fileChannel.close();
-						reject(error instanceof Error ? error : new Error(String(error)));
-					});
-				}
-			});
+	stfStreamingStart(message: string = '') {
+		this.sendMessage('stf-streaming-start', {
+			message
 		});
 	}
 
 	/**
-	 * Sends an audio file for Speech-to-Face (STF) processing.
-	 * The avatar will lip-sync to the provided audio.
-	 * @param file Audio file blob (mp3 or wav).
-	 * @param format Audio format ('mp3' or 'wav').
-	 * @param message Optional text message associated with the audio.
-	 * @returns Promise resolving to the file reference string.
+	 * Sends one slice of a streaming STF turn.
+	 * @param data Base64-encoded raw PCM — mono, 24 kHz, signed 16-bit little-endian.
 	 */
-	async stf(file: Blob, format: string, message: string): Promise<string> {
-		const fileRef = await this.sendFile(file);
-		this.sendMessage('stf', {
-			message,
-			file_ref: fileRef,
-			format
+	stfStreamingData(data: string) {
+		this.sendMessage('stf-streaming-data', {
+			data
 		});
+	}
 
-		return fileRef;
+	/**
+	 * Closes a streaming STF turn so the server can render the tail of the audio.
+	 */
+	stfStreamingEnd() {
+		this.sendMessage('stf-streaming-end', {});
 	}
 
 	/**
@@ -488,6 +440,18 @@ export interface STFMessage {
 
 export interface STTMessage {
 	text: string;
+}
+
+/**
+ * A command the server refused, echoed back with the `type` it refused.
+ *
+ * Sent for any control-channel command the server cannot serve — an unknown
+ * one (`unknown_command`, e.g. a server without streaming STF) as much as a
+ * malformed one.
+ */
+export interface ControlErrorMessage {
+	code: string;
+	type: string;
 }
 
 export interface STTErrorMessage {

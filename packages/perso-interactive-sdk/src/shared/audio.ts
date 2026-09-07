@@ -12,18 +12,7 @@ import { resampleAudio, TTS_TARGET_SAMPLE_RATE } from './audio-resampler';
  * @throws TTSDecodeError When the Base64 data is invalid.
  */
 export async function decodeTTSAudio(base64: string, resample: boolean = true): Promise<Blob> {
-	let arrayBuffer: ArrayBuffer;
-	try {
-		const byteChars = atob(base64);
-		const byteNumbers = new Array(byteChars.length);
-		for (let i = 0; i < byteChars.length; i++) {
-			byteNumbers[i] = byteChars.charCodeAt(i);
-		}
-		arrayBuffer = new Uint8Array(byteNumbers).buffer as ArrayBuffer;
-	} catch {
-		throw new TTSDecodeError('Invalid Base64 audio data');
-	}
-
+	const arrayBuffer = base64ToArrayBuffer(base64);
 	const mimeType = detectAudioMimeType(arrayBuffer);
 
 	if (!resample) {
@@ -31,7 +20,7 @@ export async function decodeTTSAudio(base64: string, resample: boolean = true): 
 	}
 
 	try {
-		const audioData = await decodeAndResample(arrayBuffer, mimeType);
+		const audioData = await decodeAndResample(arrayBuffer, mimeType, TTS_TARGET_SAMPLE_RATE);
 		const wavBuffer = encodeWav(audioData.samples, TTS_TARGET_SAMPLE_RATE, 1);
 		return new Blob([wavBuffer], { type: 'audio/wav' });
 	} catch {
@@ -39,39 +28,91 @@ export async function decodeTTSAudio(base64: string, resample: boolean = true): 
 	}
 }
 
+/**
+ * Decodes Base64-encoded audio into its raw bytes.
+ *
+ * @param base64 Base64-encoded audio data.
+ * @returns The decoded bytes.
+ * @throws TTSDecodeError When the Base64 data is invalid.
+ */
+export function base64ToArrayBuffer(base64: string): ArrayBuffer {
+	try {
+		const byteChars = atob(base64);
+		const bytes = new Uint8Array(byteChars.length);
+		for (let i = 0; i < byteChars.length; i++) {
+			bytes[i] = byteChars.charCodeAt(i);
+		}
+		return bytes.buffer as ArrayBuffer;
+	} catch {
+		throw new TTSDecodeError('Invalid Base64 audio data');
+	}
+}
+
+/**
+ * Decodes any supported audio container (WAV directly, everything else via
+ * the browser's decoder) into mono Float32 PCM at the requested rate.
+ *
+ * @param input Audio bytes or a Blob holding them.
+ * @param targetSampleRate Rate the returned samples must be at.
+ * @returns Mono Float32 samples at `targetSampleRate`.
+ */
+export async function decodeAudioToPcm(
+	input: Blob | ArrayBuffer,
+	targetSampleRate: number
+): Promise<Float32Array> {
+	const arrayBuffer = input instanceof ArrayBuffer ? input : await blobToArrayBuffer(input);
+	const mimeType = detectAudioMimeType(arrayBuffer);
+	const { samples } = await decodeAndResample(arrayBuffer, mimeType, targetSampleRate);
+	return samples;
+}
+
+export async function blobToArrayBuffer(blob: Blob): Promise<ArrayBuffer> {
+	if (typeof blob.arrayBuffer === 'function') {
+		return blob.arrayBuffer();
+	}
+	// Fallback for runtimes whose Blob predates arrayBuffer() (older browsers, jsdom).
+	return new Promise((resolve, reject) => {
+		const reader = new FileReader();
+		reader.onload = () => resolve(reader.result as ArrayBuffer);
+		reader.onerror = () => reject(reader.error ?? new Error('Failed to read audio blob'));
+		reader.readAsArrayBuffer(blob);
+	});
+}
+
 async function decodeAndResample(
 	arrayBuffer: ArrayBuffer,
-	mimeType: string
+	mimeType: string,
+	targetSampleRate: number
 ): Promise<{ samples: Float32Array; sampleRate: number }> {
 	if (mimeType === 'audio/wav') {
 		const wavInfo = parseWav(arrayBuffer);
-		if (wavInfo.sampleRate === TTS_TARGET_SAMPLE_RATE) {
+		if (wavInfo.sampleRate === targetSampleRate) {
 			return { samples: wavInfo.samples, sampleRate: wavInfo.sampleRate };
 		}
 		const resampled = await resampleAudio(
 			wavInfo.samples,
 			wavInfo.sampleRate,
-			TTS_TARGET_SAMPLE_RATE,
+			targetSampleRate,
 			wavInfo.channels
 		);
-		return { samples: resampled, sampleRate: TTS_TARGET_SAMPLE_RATE };
+		return { samples: resampled, sampleRate: targetSampleRate };
 	}
 
-	const audioContext = new AudioContext({ sampleRate: TTS_TARGET_SAMPLE_RATE });
+	const audioContext = new AudioContext({ sampleRate: targetSampleRate });
 	try {
 		const audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
-		if (audioBuffer.sampleRate === TTS_TARGET_SAMPLE_RATE) {
-			return { samples: audioBuffer.getChannelData(0), sampleRate: TTS_TARGET_SAMPLE_RATE };
+		if (audioBuffer.sampleRate === targetSampleRate) {
+			return { samples: audioBuffer.getChannelData(0), sampleRate: targetSampleRate };
 		}
 		const resampled = await resampleAudio(
 			audioBuffer.getChannelData(0),
 			audioBuffer.sampleRate,
-			TTS_TARGET_SAMPLE_RATE,
+			targetSampleRate,
 			1
 		);
-		return { samples: resampled, sampleRate: TTS_TARGET_SAMPLE_RATE };
+		return { samples: resampled, sampleRate: targetSampleRate };
 	} finally {
-		await audioContext.close();
+		await audioContext.close?.();
 	}
 }
 

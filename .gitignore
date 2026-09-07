@@ -36,6 +36,7 @@ vite.config.ts.timestamp-*
 /apps/svelte/dist
 /apps/typescript/dist
 /apps/sdk-tester/dist
+/apps/sdk-tester/public/perso-chat-loader.js
 /apps/sdk-tester/api/dist
 /apps/sdk-tester/api/node_modules
 /apps/sdk-tester/api/local.settings.json
@@ -45,3 +46,4 @@ tools/*
 
 # Internal planning/spec docs (superpowers)
 /docs/superpowers/
+.gstack/

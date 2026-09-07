@@ -1,5 +1,20 @@
 import { ApiError } from './error';
-import type { STTResponse, SessionTemplate } from './types';
+import type {
+	BackgroundImage,
+	Document,
+	LLMType,
+	MCPServer,
+	ModelStyle,
+	Prompt,
+	STTResponse,
+	STTType,
+	SessionInfo,
+	SessionTemplate,
+	TextNormalizationConfig,
+	TTSOutputFormat,
+	TTSResponse,
+	TTSType
+} from './types';
 
 export enum SessionCapabilityName {
 	LLM = 'LLM',
@@ -37,7 +52,7 @@ export class PersoUtil {
 	 *   }
 	 * ]
 	 */
-	static async getLLMs(apiServer: string, apiKey: string) {
+	static async getLLMs(apiServer: string, apiKey: string): Promise<LLMType[]> {
 		const promise = fetch(`${apiServer}/api/v1/settings/llm_type/`, {
 			headers: {
 				'PersoLive-APIKey': apiKey
@@ -61,7 +76,7 @@ export class PersoUtil {
 	 *   }
 	 * ]
 	 */
-	static async getModelStyles(apiServer: string, apiKey: string) {
+	static async getModelStyles(apiServer: string, apiKey: string): Promise<ModelStyle[]> {
 		const promise = fetch(`${apiServer}/api/v1/settings/modelstyle/?platform_type=webrtc`, {
 			headers: {
 				'PersoLive-APIKey': apiKey
@@ -86,7 +101,7 @@ export class PersoUtil {
 	 *   }
 	 * ]
 	 */
-	static async getBackgroundImages(apiServer: string, apiKey: string) {
+	static async getBackgroundImages(apiServer: string, apiKey: string): Promise<BackgroundImage[]> {
 		const promise = fetch(`${apiServer}/api/v1/background_image/`, {
 			headers: {
 				'PersoLive-APIKey': apiKey
@@ -110,7 +125,7 @@ export class PersoUtil {
 	 *   }
 	 * ]
 	 */
-	static async getTTSs(apiServer: string, apiKey: string) {
+	static async getTTSs(apiServer: string, apiKey: string): Promise<TTSType[]> {
 		const promise = fetch(`${apiServer}/api/v1/settings/tts_type/`, {
 			headers: {
 				'PersoLive-APIKey': apiKey
@@ -123,18 +138,31 @@ export class PersoUtil {
 	}
 
 	/**
+	 * Lists the STT types available to this API key.
+	 *
+	 * Reads the v2 listing, not v1. v1 filters out `STREAMING` types and
+	 * serializes without `mode` / `end_of_turn_detection`, so a configuration
+	 * screen built on it cannot offer streaming STT at all. v2 is a strict
+	 * superset in both rows and fields, so there is nothing to choose between
+	 * and no version option is exposed.
+	 *
+	 * Requires a server that serves `/settings/stt_type/v2/`.
+	 *
 	 * @param apiServer Perso Interactive API Server
 	 * @param apiKey Perso Interactive API Key
 	 * @returns JSON
 	 * [
 	 *   {
 	 *     "name": string,
-	 *     "service": string
+	 *     "service": string,
+	 *     "options": unknown | null,
+	 *     "mode": "NON_STREAMING" | "STREAMING",
+	 *     "end_of_turn_detection": boolean
 	 *   }
 	 * ]
 	 */
-	static async getSTTs(apiServer: string, apiKey: string) {
-		const promise = fetch(`${apiServer}/api/v1/settings/stt_type/`, {
+	static async getSTTs(apiServer: string, apiKey: string): Promise<STTType[]> {
+		const promise = fetch(`${apiServer}/api/v1/settings/stt_type/v2/`, {
 			headers: {
 				'PersoLive-APIKey': apiKey
 			},
@@ -146,12 +174,14 @@ export class PersoUtil {
 	}
 
 	/**
-	 * Sends text to the TTS API and returns Base64-encoded audio.
+	 * Sends text to the TTS API and returns the synthesized audio.
 	 * @param apiServer Perso Interactive API Server
 	 * @param params Session ID and text to synthesize.
-	 * @returns JSON with Base64 audio string.
+	 * @returns JSON with Base64 audio, the resolved locale and the normalized text.
 	 * {
-	 *   "audio": string
+	 *   "audio": string,
+	 *   "locale": string,
+	 *   "normalized_text": string
 	 * }
 	 */
 	static async makeTTS(
@@ -161,8 +191,8 @@ export class PersoUtil {
 			text,
 			locale,
 			output_format
-		}: { sessionId: string; text: string; locale?: string; output_format?: string }
-	): Promise<{ audio: string }> {
+		}: { sessionId: string; text: string; locale?: string; output_format?: TTSOutputFormat }
+	): Promise<TTSResponse> {
 		const body: Record<string, string> = { text };
 		if (locale) body.locale = locale;
 		if (output_format) body.output_format = output_format;
@@ -172,7 +202,7 @@ export class PersoUtil {
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify(body)
 		});
-		return (await this.parseJson(response)) as { audio: string };
+		return (await this.parseJson(response)) as TTSResponse;
 	}
 
 	/**
@@ -190,7 +220,7 @@ export class PersoUtil {
 	 *   }
 	 * ]
 	 */
-	static async getPrompts(apiServer: string, apiKey: string) {
+	static async getPrompts(apiServer: string, apiKey: string): Promise<Prompt[]> {
 		const promise = fetch(`${apiServer}/api/v1/prompt/`, {
 			headers: {
 				'PersoLive-APIKey': apiKey
@@ -218,7 +248,7 @@ export class PersoUtil {
 	 *   }
 	 * ]
 	 */
-	static async getDocuments(apiServer: string, apiKey: string) {
+	static async getDocuments(apiServer: string, apiKey: string): Promise<Document[]> {
 		const promise = fetch(`${apiServer}/api/v1/document/`, {
 			headers: {
 				'PersoLive-APIKey': apiKey
@@ -233,29 +263,12 @@ export class PersoUtil {
 	/**
 	 * @param apiServer Perso Interactive API Server
 	 * @param apiKey Perso Interactive API Key
-	 * @returns JSON
-	 * [
-	 *   {
-	 *     "mcpserver_id": string,
-	 *     "name": string,
-	 *     "url": string,
-	 *     "description": string
-	 *   }
-	 * ]
+	 * @returns See {@link TextNormalizationConfig}.
 	 */
-	/**
-	 * @param apiServer Perso Interactive API Server
-	 * @param apiKey Perso Interactive API Key
-	 * @returns JSON
-	 * [
-	 *   {
-	 *     "textnormalizationconfig_id": string,
-	 *     "name": string,
-	 *     "created_at": string
-	 *   }
-	 * ]
-	 */
-	static async getTextNormalizations(apiServer: string, apiKey: string) {
+	static async getTextNormalizations(
+		apiServer: string,
+		apiKey: string
+	): Promise<TextNormalizationConfig[]> {
 		const promise = fetch(`${apiServer}/api/v1/settings/text_normalization_config/`, {
 			headers: {
 				'PersoLive-APIKey': apiKey
@@ -334,7 +347,19 @@ export class PersoUtil {
 		return await this.parseJson(response);
 	}
 
-	static async getMcpServers(apiServer: string, apiKey: string) {
+	/**
+	 * Lists the remote MCP servers available to this API key.
+	 *
+	 * The settings listing carries a subset of {@link MCPServer} —
+	 * `mcpserver_id`, `name`, `url`, `description`. The remaining fields
+	 * (`transport_protocol`, `server_timeout_sec`, `extra_data`) are populated
+	 * only where a server appears inside a session or template, which is why they
+	 * are optional on the shared type.
+	 *
+	 * @param apiServer Perso Interactive API Server
+	 * @param apiKey Perso Interactive API Key
+	 */
+	static async getMcpServers(apiServer: string, apiKey: string): Promise<MCPServer[]> {
 		const promise = fetch(`${apiServer}/api/v1/settings/mcp_type/`, {
 			headers: {
 				'PersoLive-APIKey': apiKey
@@ -349,60 +374,12 @@ export class PersoUtil {
 	/**
 	 * @param apiServer Perso Interactive API Server
 	 * @param apiKey Perso Interactive API Key
-	 * @returns JSON
-	 * {
-	 *   "session_id": string,
-	 *   "client_sdp": string,
-	 *   "server_sdp": string,
-	 *   "prompt": {
-	 *     "name": string,
-	 *     "description": string,
-	 *     "prompt_id": string,
-	 *     "system_prompt": string,
-	 *     "require_document": boolean,
-	 *     "intro_message": string
-	 *   },
-	 *   "document": string,
-	 *   "llm_type": {
-	 *     "name": string
-	 *   },
-	 *   "model_style": {
-	 *     "name": string,
-	 *     "model": string,
-	 *     "model_file": string,
-	 *     "style": string,
-	 *     "file": string
-	 *   },
-	 *   "tts_type": {
-	 *     "name": string,
-	 *     "service": string,
-	 *     "model": string,
-	 *     "voice": string,
-	 *     "style": string,
-	 *     "voice_extra_data": string
-	 *   },
-	 *   "ice_servers": Array<RTCIceServer>,
-	 *   "status": string, // "CREATED", "EXCHANGED", "IN_PROGRESS", "TERMINATED"
-	 *   "termination_reason": string, // "GRACEFUL_TERMINATION", "SESSION_EXPIRED_BEFORE_CONNECTION", "SESSION_LOST_AFTER_CONNECTION", "SESSION_MISC_ERROR", "MAX_ACTIVE_SESSION_QUOTA_EXCEEDED", "MAX_MIN_PER_SESSION_QUOTA_EXCEEDED", "TOTAL_MIN_PER_MONTH_QUOTA_EXCEEDED"
-	 *   "duration_sec": number,
-	 *   "created_at": string, // ex) "2024-05-02T09:05:55.395Z"
-	 *   "padding_left": number,
-	 *   "padding_top": number,
-	 *   "padding_height": number,
-	 *   "background_image": {
-	 *     "backgroundimage_id": string,
-	 *     "title": string,
-	 *     "image": string,
-	 *     "created_at": string // ex) "2024-05-02T09:05:55.395Z"
-	 *  },
-	 *  "extra_data": string,
-	 *  "capability": Array<{
-	 *    "name": string, // "LLM" | "TTS" | "STT" | "STF_ONPREMISE" | "STF_WEBRTC"
-	 *    "description": string
-	 *  }>
-	 * }
+	 * @returns The session row. See {@link SessionInfo} for the full shape —
+	 *   it is the single description of this payload, so it cannot drift out of
+	 *   step with the code the way a duplicated comment did. `stt_type` is the
+	 *   field `Session` reads to decide whether STT streams or records.
 	 */
-	static async getSessionInfo(apiServer: string, sessionId: string) {
+	static async getSessionInfo(apiServer: string, sessionId: string): Promise<SessionInfo> {
 		const promise = fetch(`${apiServer}/api/v1/session/${sessionId}/`, {
 			method: 'GET'
 		});
@@ -435,6 +412,11 @@ export class PersoUtil {
 	 *
 	 * The server returns additional fields (e.g., `locale`, `normalized_text`)
 	 * which are intentionally not exposed by the SDK.
+	 *
+	 * @deprecated The SDK now transcribes over the session WebSocket
+	 * (`stt.request`); `Session.stopProcessSTT()` / `transcribeAudio()` no longer
+	 * call this. Kept for backward compatibility and will be removed in a future
+	 * major version.
 	 */
 	static async makeSTT(
 		apiServer: string,
@@ -465,6 +447,10 @@ export class PersoUtil {
 	 * @param signal Optional AbortSignal to cancel the request
 	 * @returns ReadableStreamDefaultReader for SSE streaming response
 	 * @throws ApiError when response is not ok
+	 *
+	 * @deprecated The SDK now runs LLM turns over the session WebSocket
+	 * (`llm.request`); `Session.processLLM()` no longer calls this. Kept for
+	 * backward compatibility and will be removed in a future major version.
 	 */
 	static async makeLLM(
 		apiServer: string,

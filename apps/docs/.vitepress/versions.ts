@@ -23,10 +23,15 @@ const repoRoot = resolve(docsRoot, '..', '..');
 
 export const versions: DocsVersion[] = [
 	{
-		label: 'v1.6.0 (latest)',
+		label: 'v1.7.0 (latest)',
 		base: '',
 		apiDocsPath: resolve(repoRoot, 'core/api-docs.md'),
 		isLatest: true,
+	},
+	{
+		label: 'v1.6',
+		base: '/v1.6',
+		apiDocsPath: resolve(docsRoot, 'v1.6/api-docs.md'),
 	},
 	{
 		label: 'v1.5',
@@ -115,12 +120,15 @@ export function buildApiSidebar(version: DocsVersion): DefaultTheme.SidebarItem[
 
 export function buildGuideSidebar(version: DocsVersion): DefaultTheme.SidebarItem[] {
 	const guideBase = `${version.base}/guide`;
-	return [
-		{
-			text: 'Guide',
-			items: [{ text: 'Getting Started', link: `${guideBase}/getting-started` }],
-		},
+	const items: DefaultTheme.SidebarItem[] = [
+		{ text: 'Getting Started', link: `${guideBase}/getting-started` },
 	];
+	// Pipeline Recipes exists only for the latest version; archived snapshots
+	// keep the single Getting Started page they shipped with.
+	if (version.isLatest) {
+		items.push({ text: 'Pipeline Recipes', link: `${guideBase}/pipelines` });
+	}
+	return [{ text: 'Guide', items }];
 }
 
 export function buildSidebar(): DefaultTheme.Sidebar {
