@@ -7,6 +7,15 @@ process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
 // example
 const allConfig = await getAllConfig();
 
+// getSTTs() reads the v2 listing, which includes STREAMING types alongside the
+// recorded ones. This sample drives STT through the one-shot REST path, which a
+// STREAMING type rejects, so the mode is filtered rather than left to list order.
+// A server predating the v2 listing omits `mode`; treat that as NON_STREAMING,
+// which is all such a server can serve.
+const recordedStts = allConfig.stts.filter(
+	(stt) => (stt.mode ?? 'NON_STREAMING') === 'NON_STREAMING'
+);
+
 /**
  * @description
  * 	- Provide the Perso Interactive configuration overrides used by this sample.
@@ -32,7 +41,7 @@ const allConfig = await getAllConfig();
 export const config = {
 	llm: allConfig.llms[0].name,
 	tts: allConfig.ttss[0].name,
-	stt: allConfig.stts[0].name,
+	stt: recordedStts[0].name,
 	modelStyle: allConfig.modelStyles[0].name,
 	prompt: allConfig.prompts[0].prompt_id,
 	document: allConfig.documents.length > 0 ? allConfig.documents[0].document_id : null,

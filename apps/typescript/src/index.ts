@@ -401,7 +401,7 @@ const getConfig = async (): Promise<void> => {
 		}
 		const introMessage = getElement<HTMLDivElement>('introMessage');
 		const selectedPrompt = config.prompts[Number(promptOptions.value)];
-		introMessage.innerText = selectedPrompt.intro_message;
+		introMessage.innerText = selectedPrompt.intro_message ?? '';
 	};
 
 	settings.prompts.forEach((value, index) => {
@@ -614,7 +614,7 @@ const startSession = async (): Promise<void> => {
 		if (!manualClosed) {
 			setTimeout(() => {
 				getSessionInfo({ sessionId: session!.getSessionId(), apiServer })
-					.then((response: { termination_reason: string }) => {
+					.then((response) => {
 						if (response.termination_reason) {
 							alert(response.termination_reason);
 						}
@@ -628,9 +628,12 @@ const startSession = async (): Promise<void> => {
 		applySessionState(0);
 	});
 
-	if (useIntro && promptOption.intro_message.trim().length > 0) {
+	// intro_message is optional on a Prompt, so a prompt without one used to
+	// throw here on `.trim()` rather than simply skipping the greeting.
+	const intro = promptOption.intro_message?.trim() ?? '';
+	if (useIntro && intro.length > 0) {
 		setTimeout(() => {
-			session?.processTTSTF(promptOption.intro_message);
+			session?.processTTSTF(intro);
 		}, 1000);
 	}
 };

@@ -19,6 +19,24 @@ yarn add perso-interactive-sdk-web
 pnpm add perso-interactive-sdk-web
 ```
 
+## Migrating from 1.6.x
+
+Client-side audio now reaches the avatar one way — streamed.
+
+- `processChat`, `processTTSTF`, `processCustomChat` — **behavior unchanged**. Text still goes to the server; synthesis and lip-sync stay in the server pipeline. `processChat`/`processCustomChat` are marked `@deprecated` as of 1.7.0 — prefer `processLLM()` → `processTTS()` → `processSTF()`, or `processTTSTF()`.
+- `processSTF` now returns `Promise<void>` instead of the old `file_ref` string, and its `format` argument is ignored (the container is detected from the bytes). Drop any use of the return value.
+- `session.perso.stf()` / `.sendFile()` were removed — use `processSTF`.
+- `processTTS`'s `output_format` option is now typed as the `TTSOutputFormat` union instead of `string`. Runtime behaviour is unchanged; TypeScript callers passing a `string`-typed variable need to narrow it (e.g. `as TTSOutputFormat`).
+
+```typescript
+// before
+const fileRef = await session.processSTF(blob, 'wav', text);
+// after
+await session.processSTF(blob, undefined, text);
+```
+
+See [Migrating from 1.6.x](https://github.com/perso-ai/perso-interactive-sdk-web/blob/master/core/api-docs.md#migrating-from-16x) for the full detail. Your `instanceof STTError`/`TTSError`/`LLMError` handling keeps working — a connection that would not open surfaces as the same error with `underlyingError.errorCode === 0` and a string `.code`.
+
 ## Usage
 
 > 📖 **Looking for step-by-step examples?** See the [Example Guide](https://github.com/perso-ai/perso-interactive-sdk-web/blob/master/packages/perso-interactive-sdk/example-guide/en/README.md) for annotated code snippets covering LLM, TTS, STT, STF, and full pipeline patterns.
@@ -28,6 +46,8 @@ The SDK provides two entry points:
 ### Server-side (`perso-interactive-sdk-web/server`)
 
 Use this module in Node.js server environments to create sessions securely without exposing your API key. The client examples below (ES Module, TypeScript, IIFE) all call this server endpoint to obtain a `sessionId`.
+
+Every option here selects or configures a capability, and omitting one leaves that capability out of the session — `model_style` the avatar, `llm_type` the conversation, `tts_type` and `stt_type` the voice. A blank string counts as omitted; the SDK drops it rather than sending an id the server would reject. See [Capabilities](https://github.com/perso-ai/perso-interactive-sdk-web/blob/master/core/api-docs.md#capabilities).
 
 #### Express.js Example
 
@@ -70,6 +90,20 @@ app.post("/api/session", async (req, res) => {
       },
       // apiServer defaults to "https://platform.perso.ai".
       // Pass it explicitly to point at another environment (e.g., stage).
+    });
+    res.json({ sessionId });
+  } catch (error) {
+    console.error("Session creation failed:", error);
+    res.status(500).json({ error: "Failed to create session" });
+  }
+});
+
+// Using a SessionTemplate (simpler — no need to specify individual options)
+app.post("/api/session-from-template", async (req, res) => {
+  try {
+    const sessionId = await createSessionId({
+      apiKey: API_KEY,
+      sessionTemplateId: "<sessiontemplate_id>",
     });
     res.json({ sessionId });
   } catch (error) {
@@ -233,9 +267,10 @@ for await (const chunk of llmGenerator) {
 // 2. Convert text to speech
 const audioBlob = await session.processTTS(llmResponse);
 
-// 3. Animate avatar with audio
+// 3. Animate avatar with audio — decoded locally and streamed to the server,
+//    so the avatar starts speaking before the whole clip has been transmitted
 if (audioBlob) {
-  await session.processSTF(audioBlob, audioBlob.type, llmResponse);
+  await session.processSTF(audioBlob, undefined, llmResponse);
 }
 ```
 
@@ -247,26 +282,187 @@ const text = await session.stopProcessSTT();
 // Pass `text` to the processLLM pipeline above
 ```
 
-#### Chat (Simple) — processChat
+#### Streaming TTS
 
-All-in-one call that runs LLM → TTS → STF internally. Use this when you don't need control over individual steps.
+`processTTS()` resolves with a finished `Blob`, so nothing is audible until
+synthesis completes. `processStreamingTTS()` resolves as soon as the stream is
+established and hands back a stream of PCM chunks, so playback can start on the
+first chunk.
+
+**`processStreamingTTS()` requires a streamable voice.** The SDK reads the
+session row once when the session is created and checks `tts_type.streamable`.
+Unless it is `true` the call rejects with `TTSNotStreamableError` before any
+request goes out — the TTS type is fixed for the session's lifetime, so no retry
+or error handler can make that session stream. A confirmed `true` is required:
+`false`, `null`, an absent field, a session created without TTS, and a row the
+SDK could not read all reject, because a request built on an unconfirmed flag
+can only fail later and less clearly. A failed lookup is not cached, so the next
+call reads the row again.
+
+`processTTS()` is never gated this way — it works on every voice and is the
+fallback.
+
+The flag is server-side data and **can differ per environment for the same
+voice**. Read the value for the environment you target with
+`getSessionInfo({ sessionId })` before assuming a voice can stream there.
 
 ```typescript
-session.processChat("Hello!");
+import { PcmStreamDecoder, TTSNotStreamableError } from 'perso-interactive-sdk-web/client';
+
+try {
+  const stream = await session.processStreamingTTS('Hello, world!');
+  if (stream) {
+    const decoder = new PcmStreamDecoder();
+    for await (const chunk of stream) {
+      const samples = decoder.decode(chunk); // Float32Array, [-1, 1]
+      // feed `samples` to playback at `stream.sampleRate` (24000, mono)
+    }
+  }
+} catch (error) {
+  if (error instanceof TTSNotStreamableError) {
+    // This session's voice cannot stream — the one-shot path works on every voice
+    const audioBlob = await session.processTTS('Hello, world!');
+  }
+}
 ```
+
+On a streamable voice `processTTS()` synthesizes progressively and reassembles
+the audio internally, so synthesis and download overlap and the clip is ready
+sooner. That is an internal detail: the return value is a single `Blob` either
+way, and existing callers need no change. This path carries PCM only, so an
+`output_format` other than `pcm`/`pcm_24000` — and any non-streamable voice —
+keeps the one-shot `POST /tts/` endpoint, which is the only one that produces
+containers (mp3/wav).
+
+Two things the chunks cannot tell you, which is why the SDK carries them:
+
+- The bytes are **little-endian** 16-bit PCM. Treating them as big-endian
+  produces noise.
+- The sample rate is not carried in the frames. Read it from `stream.sampleRate`
+  or `STREAMING_TTS_SAMPLE_RATE`.
+
+Chunk boundaries do not respect sample boundaries — 1-byte chunks occur — so use
+`PcmStreamDecoder` rather than decoding each chunk on its own; it carries a split
+sample forward. Cancel an abandoned turn with `await stream.cancel()`.
+
+> **`streamable` decides whether you may stream, not how fast the audio
+> arrives.** Progressive delivery is up to the voice's TTS provider: some voices
+> deliver first audio early in the synthesis, others withhold everything until it
+> finishes — a `streamable: true` voice may still deliver everything at the end.
+> Either way the stream yields the same chunks and callers need no special case.
+
+#### Streaming STT
+
+An STT type works in one of two modes, fixed when the session is created:
+`NON_STREAMING` records the whole utterance and transcribes it on stop, while
+`STREAMING` streams audio as the user speaks so interim text
+arrives mid-utterance. The two are mutually exclusive server-side.
+
+**You do not select the transport.** `startProcessSTT()` reads the session's
+STT type and uses the matching one, so the code above works unchanged for both.
+To use streaming, pass a streaming `stt_type` to `createSessionId()` — find one
+with `getSTTs()`, whose `mode` and `end_of_turn_detection` fields identify them.
+
+Interim results are opt-in, since a hypothesis is not a settled transcript.
+Subscribe with `subscribeSttPartials` (it never fires on a non-streaming session):
+
+```typescript
+session.subscribeSttPartials(({ text, finalText }) => showInterim(text, finalText));
+await session.startProcessSTT({ language: 'ko' });
+const text = await session.stopProcessSTT();
+```
+
+When the STT type sets `end_of_turn_detection`, the provider detects utterance
+boundaries itself: the microphone stays open for the whole conversation and each
+committed utterance (one turn) is delivered as a whole `SttUtterance`. Subscribe
+with `subscribeSttUtterances` **before** starting — without a subscriber there is
+nowhere for utterances to go, so the call is rejected rather than dropping them
+silently.
+
+```typescript
+session.subscribeSttUtterances(async (utterance) => {
+  for await (const chunk of session.processLLM({ message: utterance.text })) {
+    if (chunk.type === 'message' && chunk.finish) session.processTTSTF(chunk.message);
+  }
+});
+
+await session.startProcessSTT(); // mic stays open; utterances arrive via the subscriber
+```
+
+The SDK requests echo cancellation and discards utterances that closely match
+what the avatar just spoke, so its own voice is not fed back into the LLM.
+
+The transport is hidden from you, but the interaction model is not: a microphone
+that stays open for the whole conversation needs a live indicator rather than a
+press-and-hold button, and each transcript arrives on the subscriber instead of as
+a return value. So `end_of_turn_detection` — not `mode` — is the value your UI
+branches on. Whoever creates the session already knows it; pass it to the client
+rather than querying. When you genuinely don't know it, `getSessionInfo()` needs
+no API key:
+
+```typescript
+const info = await getSessionInfo({ sessionId });
+if (info.stt_type?.end_of_turn_detection) {
+  session.subscribeSttUtterances(handleUtterance); // before startProcessSTT()
+}
+```
+
+> Streaming STT requires a backend serving `/api/v1/settings/stt_type/v2/`.
+> Against an older server every STT type is treated as `NON_STREAMING`.
+
+See [STT interaction modes](https://github.com/perso-ai/perso-interactive-sdk-web/blob/master/core/api-docs.md#stt-interaction-modes) for the full reference.
 
 #### Direct Speech — processTTSTF
 
-Avatar speaks text directly without LLM. Useful for scripted greetings, announcements, or guided messages.
+Avatar speaks text directly without LLM. Useful for scripted greetings, announcements, or guided messages. The text is handed to the server over the WebRTC control channel; TTS synthesis and lip-sync run in the server pipeline.
 
 ```typescript
 session.processTTSTF("Welcome! How can I help you today?");
 ```
 
+#### Lip-sync your own audio — processSTF
+
+`processSTF` is the one way client-side audio reaches the avatar, and it **always streams**: the SDK converts the audio to mono 24 kHz PCM and sends it as `stf-streaming-start / -data / -end` frames, so the server starts lip-syncing before the last byte arrives.
+
+```typescript
+// A finished clip — any container the browser can decode
+await session.processSTF(audioBlob, undefined, "Hello");
+
+// Audio still being produced — a streaming TTS, a microphone, a synthesizer.
+// Chunks must already be mono 24 kHz (Float32 in [-1, 1] or s16le bytes).
+async function* chunks(): AsyncGenerator<Float32Array> {
+  for await (const chunk of vendorTts.stream(text)) yield chunk;  // turn opens here
+}                                                                 // source ends -> turn ends
+await session.processSTF(chunks(), undefined, text);
+
+// Stop mid-speech (also stops consuming a live source)
+await session.clearBuffer();
+```
+
+Resolving means the audio was **transmitted**, not played — playback is reported by the server's `stf` response, which drives `ChatState.SPEAKING`. Overlapping calls are serialized, one turn at a time.
+
+A server that rejects the turn (`error` frame) never sends that `stf` response. The SDK gives the turn's `ANALYZING` state back, cancels the stream, and reports an `STFError` with `code: 'server_rejected'` through `setErrorHandler` — one per rejected turn. A server without streaming STF rejects `stf-streaming-start` with `unknown_command`, so **watch for this error if the avatar stays silent**.
+
+Because the audio comes from your side, this path works on a session created **without a TTS** — leave `tts_type` out of `createSessionId`. Only the server-synthesized path (`processTTSTF` / `processChat`) requires one.
+
+An always-on microphone needs one extra decision: because the frames carry no timestamps, a mute has to end the turn (or be filled with silence), otherwise the server concatenates across the gap and the avatar falls behind. See [How audio reaches the avatar (STF)](https://github.com/perso-ai/perso-interactive-sdk-web/blob/master/core/api-docs.md#how-audio-reaches-the-avatar-stf) for the full guidance.
+
 ```typescript
 // Stop session
 session.stopSession();
 ```
+
+#### Legacy — processChat
+
+> **Deprecated.** `processChat()` predates the step-controlled pipeline and is marked `@deprecated`. It still works, but new integrations should use [Chat (Recommended)](#chat-recommended--processllm--processtts--processstf) instead.
+
+All-in-one call that runs LLM → TTS → lip-sync internally, with synthesis and lip-sync handled server-side. Nothing is exposed between the steps, so you cannot read the LLM response before it is spoken, substitute your own audio, or start playback on the first TTS chunk.
+
+```typescript
+session.processChat("Hello!");
+```
+
+`processCustomChat()` belongs to the same family and is **deprecated**: use `processTTSTF()` and manage history yourself with `getMessageHistory()`.
 
 ### Client Tool Calling
 
@@ -365,13 +561,24 @@ For direct browser usage via `<script>` tag without a bundler. The SDK exposes a
 | `getSessionTemplates({ apiKey, apiServer? })`                                   | Get available session templates                      |
 | `getSessionTemplate({ apiKey, sessionTemplateId, apiServer? })`                 | Get a single session template by ID                  |
 | `getSessionInfo({ sessionId, apiServer? })`                                     | Get session metadata                                 |
-| `makeTTS({ sessionId, text, locale?, output_format?, apiServer? })`             | Generate TTS audio from text (standalone)            |
+| `makeTTS({ sessionId, text, locale?, output_format?, apiServer? })`             | Generate TTS audio from text (standalone). Returns `TTSResponse` (`{ audio, locale?, normalized_text? }`) |
 | `DEFAULT_API_SERVER`                                                            | The default API server URL (`https://platform.perso.ai`) |
 | `PersoUtilServer`                                                               | Low-level API utilities                              |
 | `ApiError`                                                                      | Error class for API errors                           |
 | `SessionCreationError`                                                          | Error class for session creation failures (extends `ApiError`) |
 | `DoesNotExistError`                                                             | Session creation referenced a non-existent resource (extends `SessionCreationError`) |
 | `NotInOrganizationError`                                                        | Session creation referenced a resource not assigned to the org (extends `SessionCreationError`) |
+
+Type-only exports, for naming what the getters above return: `STTType`,
+`STTMode`, `LLMType`, `TTSType`, `ModelStyle`, `ModelStyleConfig`,
+`ModelFile`, `BackgroundImage`, `Prompt`, `Document`, `MCPServer`,
+`SessionCapability`, `TextNormalizationConfig`, `TextNormalizationDownload`,
+`SessionTemplate`, `SessionInfo`, `SessionStatus`, `STTResponse`,
+`TTSOutputFormat`, `TTSResponse`.
+
+Choosing a streaming `stt_type` is a server-side decision, since `getSTTs`
+takes the API key — which is why these live on the server entry too, not only in
+the client bundle.
 
 ### Client Exports
 
@@ -393,17 +600,23 @@ For direct browser usage via `<script>` tag without a bundler. The SDK exposes a
 | `getTextNormalization({ apiKey, configId, apiServer? })`                           | Download text normalization ruleset (pre-signed URL)       |
 | `getAllSettings({ apiKey, apiServer? })`                                           | Get all settings at once                                   |
 | `getSessionInfo({ sessionId, apiServer? })`                                        | Get session metadata                                       |
-| `makeTTS({ sessionId, text, locale?, output_format?, apiServer? })`                | Generate TTS audio from text (standalone)                  |
+| `makeTTS({ sessionId, text, locale?, output_format?, apiServer? })`                | Generate TTS audio from text (standalone). Returns `TTSResponse` (`{ audio, locale?, normalized_text? }`) |
 | `createSessionId({ apiKey, sessionTemplateId, apiServer? })`                       | Create session ID from a SessionTemplate (exposes API key) |
 | `createSessionId({ apiKey, params, apiServer? })`                                  | Create session ID (exposes API key in browser)             |
 | `getSessionTemplates({ apiKey, apiServer? })`                                      | Get available session templates                            |
+| `getSessionTemplate({ apiKey, sessionTemplateId, apiServer? })`                     | Get a single session template by ID (exposes API key)      |
 | `DEFAULT_API_SERVER`                                                               | The default API server URL (`https://platform.perso.ai`)   |
 | `ApiError`                                                                         | Error class for API errors                                 |
-| `LLMError`                                                                         | Error class for LLM errors                                 |
+| `LLMError`                                                                         | LLM failure over REST or the streaming transport, including a connection that would not open. `.code` carries the protocol/API code — match against `LLM_ERROR_CODE`; `undefined` for a streaming-response parse failure; transport-origin failures have `underlyingError.errorCode === 0` |
 | `LLMStreamingResponseError`                                                        | Error class for streaming errors                           |
-| `STTError`                                                                         | Error class for STT errors                                 |
-| `TTSError`                                                                         | Error class for TTS errors                                 |
+| `LLM_ERROR_CODE`                                                                   | Known `LLMError.code` values (open set)                    |
+| `STFError`                                                                         | Error class for streaming STF failures (carries `reason`, `code`) |
+| `STTError`                                                                         | STT failure over REST or the streaming transport, including a connection that would not open. `.code` carries the protocol/API code — match against `STT_ERROR_CODE`; transport-origin failures have `underlyingError.errorCode === 0` |
+| `STT_ERROR_CODE`                                                                   | Known `STTError.code` values (open set)                    |
+| `TTSError`                                                                         | TTS failure over REST or the streaming transport, including a connection that would not open. `.code` carries the protocol/API code — match against `TTS_ERROR_CODE`; `undefined` for a decode failure; transport-origin failures have `underlyingError.errorCode === 0` |
 | `TTSDecodeError`                                                                   | Error class for TTS decode errors                          |
+| `TTSNotStreamableError`                                                            | `processStreamingTTS()` was called on a session whose TTS type does not report `streamable: true` |
+| `TTS_ERROR_CODE`                                                                   | Known `TTSError.code` values (open set)                    |
 | `SessionCreationError`                                                             | Error class for session creation failures (extends `ApiError`) |
 | `DoesNotExistError`                                                                | Session creation referenced a non-existent resource (extends `SessionCreationError`) |
 | `NotInOrganizationError`                                                           | Session creation referenced a resource not assigned to the org (extends `SessionCreationError`) |
@@ -412,33 +625,55 @@ For direct browser usage via `<script>` tag without a bundler. The SDK exposes a
 | `createWavRecorder(options?)`                                                      | Factory function for WavRecorder                           |
 | `getWavSampleRate(wavData)`                                                        | Extract sample rate from WAV data                          |
 | `TTS_TARGET_SAMPLE_RATE`                                                           | TTS target sample rate constant (16000)                    |
+| `STF_STREAM_SAMPLE_RATE`                                                           | Sample rate live STF PCM chunks must be at (24000)          |
+| `PcmStreamDecoder`                                                                 | Decodes streaming-TTS PCM chunks to floats, carrying samples split across chunk boundaries |
+| `STREAMING_TTS_SAMPLE_RATE`                                                        | Sample rate of streaming-TTS PCM, which the response omits (24000) |
+| `STREAMING_TTS_CHANNELS`                                                           | Channel count of streaming-TTS PCM (1)                     |
+
+Type-only exports: `Chat`, `LLMStreamChunk`, `ProcessLLMOptions`,
+`StartProcessSTTOptions`, `SttPartial`, `SttUtterance`, `SttResultMeta`,
+`StfAudioSource`, `StfPcmChunk`,
+`StreamingTTSStream`, `StreamingTTSOutputFormat`,
+`STTType`, `STTMode`, `STTResponse`, `LLMType`, `TTSType`, `TTSOutputFormat`,
+`TTSResponse`, `ModelStyle`,
+`ModelStyleConfig`, `ModelFile`, `BackgroundImage`, `Prompt`, `Document`,
+`MCPServer`, `SessionCapability`, `TextNormalizationConfig`,
+`TextNormalizationDownload`, `SessionTemplate`, `SessionInfo`, `SessionStatus`,
+`LlmProcessorCallbacks`, `LlmProcessorConfig`, `WavRecorderOptions`, and the
+`*Options` argument types.
+
+`AIHumanModelFile` is still exported from the client entry as a deprecated alias
+of `ModelFile`. Prefer `ModelFile` in new code.
 
 ### Session Methods
 
 | Method                              | Description                                    |
 | ----------------------------------- | ---------------------------------------------- |
 | `setSrc(videoElement)`              | Bind session to video element                  |
-| `processChat(message)`              | Send a message to the LLM                      |
+| `processChat(message)`              | ~~Send a message to the LLM and let the server speak the reply~~ (Deprecated) — use `processLLM` → `processTTS` → `processSTF` |
 | `processLLM(options)`               | Stream LLM responses with full control         |
-| `processTTSTF(message)`             | Speak a message without LLM                    |
-| `processTTS(message, options?)`     | Generate TTS audio from text (returns Blob). Options: `resample`, `locale`, `output_format` |
-| `processSTF(file, format?, message?)` | Send audio to the STF pipeline. `format` accepts canonical (`'wav'` / `'mp3'`) or MIME (`'audio/wav'`, `'audio/mpeg'`, …); when omitted, derived from `file.type` |
-| `startProcessSTT(timeout?)`         | Start recording voice for STT                  |
-| `stopProcessSTT(language?)`         | Stop recording and get text                    |
+| `processTTSTF(message)`             | Speak a message without LLM. The text goes to the server; TTS and lip-sync are server-side |
+| `processTTS(message, options?)`     | Generate TTS audio (`Promise<Blob \| undefined>`; `undefined` if the message is empty or the request failed — see `setErrorHandler`). Options: `resample`, `locale`, `output_format` (a `TTSOutputFormat`). On a streamable voice with `pcm`/`pcm_24000` or no `output_format`, synthesis runs over the session's streaming transport and is reassembled into a 24 kHz `audio/wav` Blob. Non-streamable voices, mp3/wav formats and `pcm_44100` use `POST /tts/`; there `pcm_44100` arrives headerless and does not decode, so ask for `wav*`/`mp3*` |
+| `processStreamingTTS(message, options?)` | Stream TTS audio as PCM chunks, playable from the first chunk. Options: `locale`, `output_format`. Rejects with `TTSNotStreamableError` unless the session's TTS type reports `streamable: true` |
+| `processSTF(audio, format?, message?)` | Lip-sync audio. A `Blob` clip is decoded locally and streamed; a live source (`ReadableStream`/`AsyncIterable` of mono 24 kHz PCM chunks) streams as it produces and the turn closes when the source ends. `format` is a legacy hint and ignored |
+| `startProcessSTT(timeoutOrOptions?)` | Start recording voice for STT. Object form: `{ timeout?, language? }`. Transport follows the session's STT mode |
+| `stopProcessSTT(language?)`         | Stop recording and get text. `language` is ignored on a streaming session |
 | `isSTTRecording()`                  | Check if STT recording is in progress          |
-| `transcribeAudio(audio, language?)` | Transcribe audio Blob/File to text             |
+| `transcribeAudio(audio, language?)` | Transcribe audio Blob/File to text. Rejects on a streaming session |
 | `transcribeAudioDetailed(audio, language?)` | Transcribe audio Blob/File and return `STTResponse` (currently `{ text }`) |
 | `getMessageHistory()`               | Get LLM conversation history                   |
-| `getRemoteStream()`                 | Get AI human's media stream                    |
+| `getRemoteStream()`                 | Get AI avatar's media stream                    |
 | `getLocalStream()`                  | ~~Get user's audio stream~~ (Deprecated)       |
 | `getSessionId()`                    | Get session ID                                 |
-| `clearBuffer()`                     | Stop AI human speaking                         |
+| `clearBuffer()`                     | Stop AI avatar speaking                         |
 | `changeSize(width, height)`         | Resize the avatar canvas                       |
 | `logSessionEvent(detail?)`          | Send a SESSION_LOG event (string or object)    |
 | `stopSession()`                     | Close the session                              |
 | `subscribeChatStates(callback)`     | Subscribe to state changes                     |
 | `subscribeChatLog(callback)`        | Subscribe to chat log updates                  |
-| `setSttResultCallback(callback)`    | Set STT result callback                        |
+| `subscribeSttPartials(callback)`    | Subscribe to interim STT hypotheses (`SttPartial`) on a streaming session; returns unsubscribe |
+| `subscribeSttUtterances(callback)`  | Subscribe to committed utterances (`SttUtterance`) under end-of-turn detection; required before `startProcessSTT()` there; returns unsubscribe |
+| `setSttResultCallback(callback)`    | ~~Receive STT results asynchronously — `(text, meta?)`~~ (Deprecated) — use `subscribeSttUtterances`. Retained for the classic voice-chat path |
 | `setErrorHandler(callback)`         | Subscribe to errors                            |
 | `onClose(callback)`                 | Subscribe to session close                     |
 

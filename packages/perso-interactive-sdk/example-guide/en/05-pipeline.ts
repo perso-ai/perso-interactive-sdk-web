@@ -9,7 +9,7 @@
  *
  * 1. Voice Chat (STT → LLM → TTS → STF): User speech → AI response → Avatar speaks
  * 2. Text Chat + Avatar Speech (LLM → TTS → STF): Text input → AI response → Avatar speaks
- * 3. processChat Simple Mode: Execute the entire pipeline in one line
+ * 3. processChat Simple Mode (deprecated): Execute the entire pipeline in one line
  * 4. Intro Message: Avatar greets when session starts
  */
 
@@ -125,18 +125,22 @@ async function example_textChat_withAvatar(session: Session, userMessage: string
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Pattern 3: processChat — Execute entire pipeline in one line (Simple Mode)
+// Pattern 3 (deprecated): processChat — Execute entire pipeline in one line
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
+ * @deprecated processChat() is deprecated. Use processLLM() -> processTTS() ->
+ * processSTF() instead (Patterns 1 and 2). Its behavior is unchanged for
+ * existing callers, and this example is kept for them.
+ *
  * processChat() automatically performs LLM call + avatar speech.
  *
  * Produces nearly the same result as "Pattern 2" above,
  * but also automatically handles chat log management and conversation history.
  *
  * Differences:
- *   processChat()           — LLM + avatar speech automatic, history auto-managed
- *   processLLM() + TTS/STF  — Manual control of each step, intermediate processing possible
+ *   processChat() (deprecated) — LLM + avatar speech automatic, history auto-managed
+ *   processLLM() + TTS/STF     — Manual control of each step, intermediate processing possible
  */
 async function example_processChat_pipeline(session: Session) {
 	// Receive results via event subscriptions
@@ -162,9 +166,8 @@ async function example_processChat_pipeline(session: Session) {
 
 /**
  * Sets the avatar to greet right after the session is created.
- * Use processChat() for LLM response + avatar speech in one go,
- * or construct a TTS → STF pipeline directly to have the avatar speak
- * a pre-prepared text.
+ * Use processTTSTF() to have the avatar speak a pre-prepared text in one
+ * call, or construct a TTS → STF pipeline directly as shown below.
  *
  * You can use an introMessage issued from the server,
  * or specify a custom greeting.
@@ -188,14 +191,15 @@ async function example_introMessage(apiServerUrl: string, sessionId: string, int
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Pattern 5: STT → processChat (Voice Input → Auto Pipeline)
+// Pattern 5 (deprecated): STT → processChat (Voice Input → Auto Pipeline)
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
+ * @deprecated processChat() is deprecated — chain STT into processLLM() ->
+ * processTTS() -> processSTF() instead (Pattern 1). Kept for existing callers.
+ *
  * After converting speech to text with STT, passing it to processChat()
  * automatically handles LLM call → avatar speech.
- *
- * This is the most concise voice conversation implementation.
  */
 async function example_stt_to_processChat(session: Session) {
 	// Start recording
@@ -205,7 +209,7 @@ async function example_stt_to_processChat(session: Session) {
 	const text = await session.stopProcessSTT('en');
 
 	if (text.trim().length > 0) {
-		// processChat() automatically handles LLM → avatar speech.
+		// processChat() (deprecated) automatically handles LLM → avatar speech.
 		session.processChat(text);
 	}
 }
@@ -219,7 +223,9 @@ async function example_stt_to_processChat(session: Session) {
  *
  * Example: "What's the weather in Seoul?" → AI calls get_weather tool → Responds with the result
  *
- * Using processChat() automatically handles Tool Call execution + follow-up LLM calls.
+ * Tool call execution + follow-up LLM calls are handled automatically on the
+ * recommended processLLM() path as well; processChat() (deprecated) is used
+ * here for brevity.
  */
 async function example_pipeline_withTools(apiServerUrl: string, sessionId: string) {
 	// ── 1) Define Tools ─────────────────────────────────────────────────
@@ -264,7 +270,7 @@ async function example_pipeline_withTools(apiServerUrl: string, sessionId: strin
 
 	// ── 3) Start conversation ───────────────────────────────────────────
 
-	// processChat() automatically:
+	// processChat() (deprecated; processLLM() runs the same tool-call loop):
 	//   1. Sends the message to the LLM
 	//   2. AI decides to call the get_weather tool
 	//   3. Executes the tool (the function defined above)
@@ -352,10 +358,11 @@ async function example_fullLifecycle(
 
 	// ── 5) Conversation (called based on user interaction) ──────────────
 
-	// Text chat
+	// Text chat — see Pattern 2 for the recommended processLLM() path
+	// (processChat() is deprecated but unchanged for existing callers)
 	// session.processChat('Hello!');
 
-	// Voice chat
+	// Voice chat — see Pattern 1 for the recommended step-by-step path
 	// await session.startProcessSTT();
 	// const text = await session.stopProcessSTT('en');
 	// session.processChat(text);

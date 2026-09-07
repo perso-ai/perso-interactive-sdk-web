@@ -5,6 +5,7 @@ export type {
 	LLMType,
 	TTSType,
 	STTType,
+	STTMode,
 	STTResponse,
 	ModelStyle,
 	BackgroundImage,
@@ -13,7 +14,12 @@ export type {
 	SessionCapability,
 	TextNormalizationConfig,
 	ModelStyleConfig,
-	AIHumanModelFile
+	ModelFile,
+	AIHumanModelFile,
+	SessionInfo,
+	SessionStatus,
+	TTSOutputFormat,
+	TTSResponse
 } from '../shared/types';
 import {
 	type Chat,
@@ -60,6 +66,7 @@ export {
 	getTextNormalizations,
 	getTextNormalization,
 	getSessionTemplates,
+	getSessionTemplate,
 	getAllSettings,
 	makeTTS,
 	getSessionInfo
@@ -69,6 +76,7 @@ export type {
 	GetTextNormalizationOptions,
 	GetSessionTemplateOptions,
 	MakeTTSOptions,
+	StreamingTTSStream,
 	GetSessionInfoOptions
 } from '../shared/settings';
 
@@ -83,7 +91,9 @@ export type CreateSessionObjectOptions = {
 /** @overload Object-form. Uses DEFAULT_API_SERVER when apiServer is omitted. */
 export function createSession(options: CreateSessionObjectOptions): Promise<Session>;
 /**
- * Creates a Session with REST-based STT/TTS (current mode).
+ * Creates a Session with SDK-driven STT/TTS (current mode): speech is
+ * exchanged through the session WebSocket (and the one-shot `/tts/` endpoint
+ * for container formats) rather than over a WebRTC audio track.
  */
 export function createSession(
 	apiServer: string,
@@ -95,7 +105,7 @@ export function createSession(
 /**
  * Creates a Session with bidirectional WebRTC audio (legacy mode).
  * @deprecated Legacy voice chat mode will be removed in a future version.
- *   Use the 5-argument overload with REST-based STT/TTS instead.
+ *   Use the 5-argument overload with SDK-driven STT/TTS instead.
  */
 export function createSession(
 	apiServer: string,

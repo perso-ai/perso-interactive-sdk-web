@@ -1,7 +1,8 @@
 import { ChatState, ChatTool, type LLMStreamChunk, type ProcessLLMOptions } from './types';
-import { ApiError, LLMError, LLMStreamingResponseError } from '../shared/error';
-import { PersoUtil } from '../shared/perso_util';
+import { LLMError, LLMStreamingResponseError, llmStreamError, SessionSocketError } from '../shared/error';
 import { removeEmoji } from '../shared/text';
+import { LlmWsStream } from './llm-ws';
+import { SessionSocket } from './session-socket';
 
 /** Maximum number of tool follow-up rounds before aborting to prevent infinite loops. */
 const MAX_TOOL_ROUNDS = 10;
@@ -24,6 +25,13 @@ export interface LlmProcessorConfig {
 	sessionId: string;
 	clientTools: Array<ChatTool>;
 	callbacks: LlmProcessorCallbacks;
+	/**
+	 * Supplies the session's shared WebSocket, which carries `llm.*`. `Session`
+	 * passes its own socket here so the connection is reused. When omitted, the
+	 * processor opens its own socket from `apiServer`/`sessionId` — kept optional
+	 * so existing standalone constructions keep working unchanged.
+	 */
+	getSocket?: () => SessionSocket;
 }
 
 interface StreamState {
@@ -38,35 +46,64 @@ interface StreamState {
 }
 
 /**
- * Handles LLM streaming, SSE parsing, tool execution, and message history
- * management as a standalone module.
+ * Handles LLM streaming (over the session WebSocket), tool execution, and
+ * message history management as a standalone module.
  */
 export class LlmProcessor {
 	private messageHistory: Array<object> = [];
+	private fallbackSocket: SessionSocket | null = null;
 	constructor(private config: LlmProcessorConfig) {}
 
 	/**
+	 * The socket to run `llm.*` over: the session's shared one when provided,
+	 * otherwise a lazily-opened socket owned by this processor.
+	 */
+	private resolveSocket(): SessionSocket {
+		if (this.config.getSocket) return this.config.getSocket();
+		this.fallbackSocket ??= new SessionSocket({
+			apiServer: this.config.apiServer,
+			sessionId: this.config.sessionId
+		});
+		return this.fallbackSocket;
+	}
+
+	/**
+	 * Closes any socket this processor opened on its own.
+	 *
+	 * A no-op when `getSocket` was supplied (the caller — e.g. {@link Session} —
+	 * owns and closes that socket). Standalone constructions that omit `getSocket`
+	 * should call this when done so the fallback WebSocket is released rather than
+	 * lingering until page unload.
+	 */
+	dispose(): void {
+		this.fallbackSocket?.close();
+		this.fallbackSocket = null;
+	}
+
+	/**
 	 * Streams LLM responses as an AsyncGenerator, yielding {@link LLMStreamChunk}
-	 * discriminated by `type`: `assistant`, `tool_call`, `tool_result`, `error`.
+	 * discriminated by `type`: `message`, `tool_call`, `tool_result`, `error`.
 	 *
 	 * Consumers get pull-based control over the stream — backpressure,
 	 * early exit via `break`, and `AbortSignal` cancellation are handled
 	 * naturally by the generator protocol.
 	 *
-	 * **Yield strategy**: message-type SSE events within a single `reader.read()`
-	 * are batched into one `assistant` chunk (accumulated `chunks[]` + `message`).
-	 * Non-message events (`tool_call`, `tool`) flush pending message chunks first
-	 * to preserve ordering.
+	 * **Yield strategy**: consecutive `llm.delta` frames are accumulated into one
+	 * `message` chunk (`chunks[]` + `message`). A `tool_call` flushes any
+	 * pending message chunk first to preserve ordering.
 	 *
 	 * **Tool execution** happens internally — `tool_call` and `tool_result` chunks
 	 * are yielded for observability. If tools require a follow-up LLM call,
 	 * the generator loops transparently.
 	 *
+	 * **Failures**: a socket that will not open, an `llm.error` frame, or a
+	 * dropped socket are yielded as an `error` chunk (an {@link LLMError})
+	 * rather than thrown, so a consumer sees one terminal chunk either way.
+	 *
 	 * @param options - Message, optional tool overrides, and optional AbortSignal.
-	 * @yields {LLMStreamChunk} Streaming chunks. The final `assistant` chunk
+	 * @yields {LLMStreamChunk} Streaming chunks. The final `message` chunk
 	 *   has `finish: true` and contains the complete `chunks[]` / `message`.
 	 * @throws {Error} If `options.message` is empty.
-	 * @throws {LLMError} Re-thrown when the initial fetch fails with a non-API error.
 	 */
 	async *processLLM(options: ProcessLLMOptions): AsyncGenerator<LLMStreamChunk> {
 		if (options.message.length === 0) {
@@ -100,6 +137,32 @@ export class LlmProcessor {
 
 		this.config.callbacks.onChatStateChange(ChatState.LLM, null);
 		try {
+			// An already-aborted turn does no transport work at all.
+			if (options.signal?.aborted) {
+				return;
+			}
+
+			const socket = this.resolveSocket();
+			try {
+				await socket.ensureOpen();
+			} catch (error) {
+				// The WS transport is internal to the SDK: a connection-level failure
+				// is still an LLM failure to the caller, who never chose WebSocket over
+				// REST. Surface it as LLMError — matching stopProcessSTT / processTTS —
+				// so `instanceof LLMError` keeps working; the socket's code is
+				// preserved on `.code`. Only a non-Error is wrapped from scratch.
+				yield {
+					type: 'error',
+					error:
+						error instanceof SessionSocketError
+							? llmStreamError({ reason: error.message, code: error.code })
+							: error instanceof Error
+								? error
+								: llmStreamError({ reason: String(error) })
+				};
+				return;
+			}
+
 			while (true) {
 				if (options.signal?.aborted) {
 					if (state.allChunks.length > 0) {
@@ -113,24 +176,15 @@ export class LlmProcessor {
 					return;
 				}
 
-				let reader: ReadableStreamDefaultReader<Uint8Array>;
-				try {
-					reader = await PersoUtil.makeLLM(
-						this.config.apiServer,
-						this.config.sessionId,
-						{ messages: messagePayload, tools: tools },
-						options.signal
-					);
-				} catch (error) {
-					if (error instanceof ApiError) {
-						yield { type: 'error', error: new LLMError(error) };
-						return;
-					}
-					throw error;
-				}
+				const wsStream = new LlmWsStream({
+					socket,
+					messages: messagePayload as Array<Record<string, unknown>>,
+					tools: tools as Array<Record<string, unknown>>,
+					...(options.signal && { signal: options.signal })
+				});
 
 				state.streamingError = null;
-				yield* this.parseSSEStream(reader, state, options);
+				yield* this.parseWsStream(wsStream, state, options);
 
 				if (state.streamingError) {
 					return;
@@ -189,13 +243,22 @@ export class LlmProcessor {
 		}
 	}
 
-	private async *parseSSEStream(
-		reader: ReadableStreamDefaultReader<Uint8Array>,
+	/**
+	 * Consumes one `llm.request` turn's frames from {@link LlmWsStream}, updating
+	 * `state` and yielding the same {@link LLMStreamChunk}s the REST path did.
+	 *
+	 * The transport differs but the downstream contract does not: `llm.delta`
+	 * frames accumulate into `message` chunks (emoji-stripped, same as
+	 * before), `llm.tool_call` becomes a `tool_call` chunk and arms the tool
+	 * round, and `llm.finish` ends the turn. A `llm.error` (or a socket drop)
+	 * surfaces as an `error` chunk and sets `state.streamingError`, matching how
+	 * the previous REST/SSE path reported a failed stream.
+	 */
+	private async *parseWsStream(
+		wsStream: LlmWsStream,
 		state: StreamState,
 		options: ProcessLLMOptions
 	): AsyncGenerator<LLMStreamChunk> {
-		const decoder = new TextDecoder('utf-8');
-		let buffer = '';
 		let contents = '';
 		state.pendingToolCallsMessage = null;
 
@@ -212,167 +275,82 @@ export class LlmProcessor {
 			return null;
 		};
 
-		while (true) {
-			const { done, value } = await reader.read();
-			if (done) {
-				break;
+		const flushAssistantText = () => {
+			if (contents.length > 0) {
+				state.newMessageHistory.push({ role: 'assistant', type: 'message', content: contents });
+				contents = '';
 			}
+		};
 
-			buffer += decoder.decode(value, { stream: true });
-
-			let boundary;
-			while ((boundary = buffer.indexOf('\n')) !== -1) {
+		try {
+			for await (const event of wsStream.run()) {
 				if (options.signal?.aborted) {
 					state.aborted = true;
 					return;
 				}
 
-				const line = buffer.slice(0, boundary).trim();
-				buffer = buffer.slice(boundary + 1);
-				if (!line.startsWith('data: {')) {
-					state.streamingError = new LLMError(
-						new LLMStreamingResponseError('Failed to parse SSE response')
-					);
-					yield { type: 'error', error: state.streamingError };
-					return;
-				}
-
-				let parsedMessage: any;
-				try {
-					parsedMessage = JSON.parse(line.slice(6).trim());
-				} catch {
-					state.streamingError = new LLMError(
-						new LLMStreamingResponseError('Failed to parse SSE JSON')
-					);
-					yield { type: 'error', error: state.streamingError };
-					return;
-				}
-				if (parsedMessage.status !== 'success') {
-					state.streamingError = new LLMError(new LLMStreamingResponseError(parsedMessage.reason));
-					yield { type: 'error', error: state.streamingError };
-					return;
-				}
-
-				if (contents.length > 0 && parsedMessage.type != 'message') {
-					state.newMessageHistory.push({
-						role: 'assistant',
-						type: 'message',
-						content: contents
-					});
-					contents = '';
-
-					// Flush pending chunks before non-message event
-					const pending = yieldChunks();
-					if (pending) yield pending;
-				}
-
-				if (parsedMessage.type === 'message') {
-					const filtered = removeEmoji(parsedMessage.content);
+				if (event.kind === 'delta') {
+					const filtered = removeEmoji(event.content);
+					if (filtered.length === 0) continue;
 					contents += filtered;
 					state.message += filtered;
 					state.allChunks.push(filtered);
-					continue;
-				}
-
-				if (parsedMessage.type === 'tool_call' && parsedMessage.tool_calls != null) {
-					state.newMessageHistory.push({
-						role: 'assistant',
-						type: parsedMessage.type,
-						content: parsedMessage.content,
-						tool_calls: parsedMessage.tool_calls
-					});
-					state.pendingToolCallsMessage = parsedMessage;
-					yield {
-						type: 'tool_call',
-						tool_calls: parsedMessage.tool_calls
-					};
-					continue;
-				}
-
-				if (parsedMessage.role === 'tool') {
-					if (parsedMessage.type === 'tool_call') {
-						state.newMessageHistory.push({
-							role: parsedMessage.role,
-							type: parsedMessage.type,
-							content: parsedMessage.content,
-							tool_call_id: parsedMessage.tool_call_id
-						});
-					}
-					continue;
-				}
-			}
-
-			// After processing all lines from this read, yield batched chunks
-			const pending = yieldChunks();
-			if (pending) yield pending;
-		}
-
-		// Process any data left in the buffer after the stream ends without a trailing '\n'.
-		// Without this, the last SSE event would be silently dropped.
-		const remaining = buffer.trim();
-		if (remaining.length > 0) {
-			if (!remaining.startsWith('data: {')) {
-				state.streamingError = new LLMError(
-					new LLMStreamingResponseError('Failed to parse SSE response')
-				);
-				yield { type: 'error', error: state.streamingError };
-				return;
-			}
-
-			let parsedMessage: any;
-			try {
-				parsedMessage = JSON.parse(remaining.slice(6).trim());
-			} catch {
-				state.streamingError = new LLMError(
-					new LLMStreamingResponseError('Failed to parse SSE JSON')
-				);
-				yield { type: 'error', error: state.streamingError };
-				return;
-			}
-
-			if (parsedMessage.status !== 'success') {
-				state.streamingError = new LLMError(new LLMStreamingResponseError(parsedMessage.reason));
-				yield { type: 'error', error: state.streamingError };
-				return;
-			}
-
-			if (parsedMessage.type === 'message') {
-				const filtered = removeEmoji(parsedMessage.content);
-				contents += filtered;
-				state.message += filtered;
-				state.allChunks.push(filtered);
-			} else if (parsedMessage.type === 'tool_call' && parsedMessage.tool_calls != null) {
-				if (contents.length > 0) {
-					state.newMessageHistory.push({
-						role: 'assistant',
-						type: 'message',
-						content: contents
-					});
-					contents = '';
 					const pending = yieldChunks();
 					if (pending) yield pending;
+					continue;
 				}
-				state.newMessageHistory.push({
-					role: 'assistant',
-					type: parsedMessage.type,
-					content: parsedMessage.content,
-					tool_calls: parsedMessage.tool_calls
-				});
-				state.pendingToolCallsMessage = parsedMessage;
-				yield {
-					type: 'tool_call',
-					tool_calls: parsedMessage.tool_calls
-				};
+
+				if (event.kind === 'tool_call') {
+					// Server-injected (RAG) tool calls are already resolved server-side;
+					// the client must not execute them. Surface for observability, but
+					// do not arm the tool round or record them as client history.
+					if (event.synthetic) {
+						yield { type: 'tool_call', tool_calls: event.toolCalls };
+						continue;
+					}
+
+					// Flush any assistant text that preceded the tool call, preserving
+					// the message-before-tool_call ordering.
+					flushAssistantText();
+					const pending = yieldChunks();
+					if (pending) yield pending;
+
+					state.newMessageHistory.push({
+						role: 'assistant',
+						type: 'tool_call',
+						// The inline content (if any) was flushed as a separate message
+						// entry above; the tool_call entry carries null, matching the
+						// shape the REST path recorded.
+						content: null,
+						tool_calls: event.toolCalls
+					});
+					state.pendingToolCallsMessage = { tool_calls: event.toolCalls };
+					yield { type: 'tool_call', tool_calls: event.toolCalls };
+					continue;
+				}
+
+				// event.kind === 'finish' — the turn is complete; nothing more to read.
 			}
+		} catch (error) {
+			const llmError =
+				error instanceof LLMError
+					? error
+					: llmStreamError({ reason: error instanceof Error ? error.message : String(error) });
+			state.streamingError = llmError;
+			yield { type: 'error', error: llmError };
+			return;
 		}
 
-		if (contents.length > 0) {
-			state.newMessageHistory.push({
-				role: 'assistant',
-				type: 'message',
-				content: contents
-			});
+		// A barge-in that fires during an idle gap (between deltas) ends the stream
+		// without another event for the in-loop abort check to observe, so the loop
+		// exits normally. Discard the partial turn here too — committing truncated
+		// assistant text would poison the next request's history.
+		if (options.signal?.aborted) {
+			state.aborted = true;
+			return;
 		}
+
+		flushAssistantText();
 	}
 
 	private async *executeToolCalls(

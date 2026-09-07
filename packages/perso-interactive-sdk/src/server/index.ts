@@ -59,4 +59,30 @@ export {
 	DoesNotExistError,
 	NotInOrganizationError
 } from '../shared/error';
-export type { SessionTemplate, STTResponse } from '../shared/types';
+/**
+ * Catalog types for the settings getters above. Choosing an `stt_type` is a
+ * server-side decision — `getSTTs` takes the API key — so the types describing
+ * what it returns have to be nameable here, not only in the client bundle.
+ */
+export type {
+	SessionTemplate,
+	STTResponse,
+	Prompt,
+	LLMType,
+	TTSType,
+	TTSOutputFormat,
+	TTSResponse,
+	STTType,
+	STTMode,
+	ModelStyle,
+	ModelStyleConfig,
+	ModelFile,
+	BackgroundImage,
+	Document,
+	MCPServer,
+	SessionCapability,
+	TextNormalizationConfig,
+	SessionInfo,
+	SessionStatus
+} from '../shared/types';
+export type { TextNormalizationDownload } from '../shared/perso_util';

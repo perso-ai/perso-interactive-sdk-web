@@ -12,7 +12,13 @@
  * Both methods return a session ID that is passed to the client's createSession().
  */
 
-import { createSessionId, getSessionTemplates } from 'perso-interactive-sdk-web/server';
+import {
+	createSessionId,
+	getSessionTemplates,
+	SessionCreationError,
+	DoesNotExistError,
+	NotInOrganizationError
+} from 'perso-interactive-sdk-web/server';
 
 import { createSession, type Session } from 'perso-interactive-sdk-web/client';
 
@@ -23,9 +29,13 @@ import { createSession, type Session } from 'perso-interactive-sdk-web/client';
 /**
  * Create a session by specifying each parameter individually.
  *
- * You need to know the exact names/IDs for model style, prompt, LLM type,
- * TTS type, and STT type. These can be fetched via the SDK's getter APIs
- * (getLLMs, getTTSs, getSTTs, getModelStyles, getPrompts).
+ * You need to know the exact names/IDs for the options you want. These can be
+ * fetched via the SDK's getter APIs (getLLMs, getTTSs, getSTTs, getModelStyles,
+ * getPrompts).
+ *
+ * Every option selects or configures a capability, so omitting one leaves that
+ * capability out of the session — a session that only lip-syncs audio you send
+ * with `processSTF` needs no LLM, TTS or STT at all.
  *
  * @param apiServer - Perso API server URL (e.g., 'https://platform.perso.ai')
  * @param apiKey    - API key (must be kept server-side only!)
@@ -99,10 +109,12 @@ async function example_listTemplates(apiServer: string, apiKey: string) {
 	for (const t of templates) {
 		console.log(`  [${t.sessiontemplate_id}] ${t.name}`);
 		console.log(`    Description : ${t.description ?? '(none)'}`);
-		console.log(`    Model Style : ${t.model_style.name}`);
-		console.log(`    LLM         : ${t.llm_type.name}`);
-		console.log(`    TTS         : ${t.tts_type.name}`);
-		console.log(`    STT         : ${t.stt_type.name}`);
+		// A template only carries what its capabilities configure, so every one
+		// of these can be absent.
+		console.log(`    Model Style : ${t.model_style?.name ?? '(none)'}`);
+		console.log(`    LLM         : ${t.llm_type?.name ?? '(none)'}`);
+		console.log(`    TTS         : ${t.tts_type?.name ?? '(none)'}`);
+		console.log(`    STT         : ${t.stt_type?.name ?? '(none)'}`);
 	}
 
 	return templates;
@@ -159,6 +171,47 @@ async function example_templateWithFallback(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Error Handling: What createSessionId() throws
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * When the server refuses the request, createSessionId() rejects with a
+ * SessionCreationError. It extends ApiError — so an existing
+ * `instanceof ApiError` branch still matches — and keeps the server's
+ * `errorCode` (HTTP status), `code`, `detail` and `attr`. Two subclasses name
+ * the common causes:
+ *   - DoesNotExistError      — code 'does_not_exist': a referenced resource is
+ *                              gone (e.g. a deleted prompt id); `attr` names the
+ *                              field that referenced it (e.g. 'prompt')
+ *   - NotInOrganizationError — code 'not_in_organization': the LLM/TTS/STT type
+ *                              exists but is not enabled for your organization
+ *
+ * The template path can also throw a plain Error before any request is sent,
+ * when the template's model_style.platform_type is not 'webrtc'.
+ */
+async function example_creationErrorHandling(
+	apiServer: string,
+	apiKey: string,
+	templateId: string
+): Promise<string | undefined> {
+	try {
+		return await createSessionId(apiServer, apiKey, templateId);
+	} catch (error) {
+		if (error instanceof DoesNotExistError) {
+			console.error(`Missing resource referenced by "${error.attr}":`, error.detail);
+		} else if (error instanceof NotInOrganizationError) {
+			console.error(`"${error.attr}" is not enabled for this organization:`, error.detail);
+		} else if (error instanceof SessionCreationError) {
+			console.error(`Session creation failed (${error.errorCode} ${error.code}):`, error.detail);
+		} else {
+			// e.g. a template whose model_style.platform_type is not 'webrtc'
+			throw error;
+		}
+		return undefined;
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Client-side: Using the Session ID
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -187,5 +240,6 @@ export {
 	example_sessionTemplate,
 	example_listTemplates,
 	example_templateWithFallback,
+	example_creationErrorHandling,
 	example_clientSession
 };

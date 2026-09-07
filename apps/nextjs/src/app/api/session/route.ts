@@ -15,6 +15,7 @@ export async function GET() {
 		const config = await getConfig();
 
 		const sessionId = await createSessionId({
+			apiServer: persoInteractiveApiServerUrl,
 			apiKey: persoInteractiveApiKey,
 			params: {
 				using_stf_webrtc: true,
@@ -30,6 +31,7 @@ export async function GET() {
 		let introMessage: string = '';
 		try {
 			introMessage = await getIntroMessage({
+				apiServer: persoInteractiveApiServerUrl,
 				apiKey: persoInteractiveApiKey,
 				promptId: config.prompt
 			});

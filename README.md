@@ -115,15 +115,12 @@ import { createSessionId, getIntroMessage } from 'perso-interactive-sdk-web/serv
 
 ## Sample app guide
 
-- **apps/svelte (`@perso-interactive-sdk-web-web/app-svelte`)**  
-  Before running, fill in `persoInteractiveApiKey` and API server information in `src/lib/constant.ts`, then run `pnpm svelte`. Session creation is handled in `src/routes/session/+server.ts`.
+- **apps/svelte (`@perso-interactive-sdk-web/app-svelte`)**  
+  Before running, set `PERSO_INTERACTIVE_API_KEY` in `apps/svelte/.env` (read by `src/lib/constant.ts`; change `persoInteractiveApiServerUrl` there only to target another environment), then run `pnpm svelte`. Session creation is handled in `src/routes/session/+server.ts`.
 
-  ```ts
-  // .env
-  PERSO_INTERACTIVE_API_KEY = 'YOUR API KEY';
-  // or
-  // constant.ts
-  export const persoInteractiveApiKey = 'YOUR API KEY';
+  ```bash
+  # apps/svelte/.env
+  PERSO_INTERACTIVE_API_KEY=your-api-key
   ```
 
 - **apps/nextjs (`@perso-interactive-sdk-web/app-nextjs`)**
@@ -134,17 +131,17 @@ import { createSessionId, getIntroMessage } from 'perso-interactive-sdk-web/serv
   PERSO_INTERACTIVE_API_KEY = 'YOUR API KEY';
   ```
 
-- **apps/vanilla (`@perso-interactive-sdk-web-web/app-vanilla`)**
+- **apps/vanilla (`@perso-interactive-sdk-web/app-vanilla`)**
   An HTML/JS demo powered by Vite. Run `pnpm vanilla` to see the basic UI and SDK integration.
 
-- **apps/typescript (`@perso-interactive-sdk-web-web/app-typescript`)**
+- **apps/typescript (`@perso-interactive-sdk-web/app-typescript`)**
   TypeScript version of the Vanilla demo. Run `pnpm typescript` to see the same UI with type support.
 
 ## Session flow overview
 
 1. Collect the Perso Interactive API server URL and API key from the operator.
 2. Fetch configuration options using `getLLMs()`, `getTTSs()`, `getSTTs()`, `getModelStyles()`, `getPrompts()`, `getDocuments()`, `getBackgroundImages()`, and `getMcpServers()` for the UI — or call `getAllSettings()` for everything in one round-trip. These getters are exported from both the `/client` and `/server` entry points; prefer the `/server` entry to keep the API key off the browser.
-3. When the user clicks **START**, invoke `createSessionId` with the selected options (plus optional padding and client tool selections), then `createSession` to bind the media stream to a `<video>` element.
+3. When the user clicks **START**, invoke `createSessionId` with the selected options (plus optional padding), then `createSession` with the returned `sessionId` and your client tools (`ChatTool[]`) to bind the media stream to a `<video>` element.
 4. Subscribe to chat logs and chat states to render transcripts, voice/speech controls, and availability indicators. Use client tools for app-specific actions and handle SDK errors via the provided callbacks.
 
 ## Quick Look
@@ -261,4 +258,4 @@ For detailed API documentation, see the **[API Reference](https://perso-ai.githu
 
 # License
 
-Perso Interactive SDK for Web is commercial software. [Contact our sales team](https://platform.perso.ai/contact/).
+Perso Interactive SDK for Web is commercial software. [Contact our sales team](https://perso.ai/contact).

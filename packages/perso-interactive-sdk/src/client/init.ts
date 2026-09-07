@@ -1,26 +1,8 @@
 import { resolveApiServer } from '../shared/api-server';
 import { ApiError, wrapSessionCreationApiError } from '../shared/error';
-import { PersoUtil, SessionCapabilityName } from '../shared/perso_util';
-import type { SessionTemplate } from '../shared/types';
-
-type CreateSessionIdBody = {
-	using_stf_webrtc: boolean;
-	model_style: string;
-	prompt: string;
-	document?: string;
-	background_image?: string;
-	mcp_servers?: Array<string>;
-	padding_left?: number;
-	padding_top?: number;
-	padding_height?: number;
-	llm_type?: string;
-	tts_type?: string;
-	stt_type?: string;
-	text_normalization_config?: string;
-	text_normalization_locale?: string | null;
-	stt_text_normalization_config?: string;
-	stt_text_normalization_locale?: string | null;
-};
+import { PersoUtil } from '../shared/perso_util';
+import { buildSessionCreateBody, sessionTemplateToParams } from '../shared/session-create';
+import type { CreateSessionIdBody } from '../shared/session-create';
 
 type CreateSessionIdObjectOptions =
 	| { apiKey: string; params: CreateSessionIdBody; apiServer?: string }
@@ -108,7 +90,7 @@ async function createSessionIdInternal(
 		if (typeof paramsOrTemplateId === 'string') {
 			const template = await PersoUtil.getSessionTemplate(apiServer, apiKey, paramsOrTemplateId);
 
-			if (template.model_style.platform_type !== 'webrtc') {
+			if (template.model_style && template.model_style.platform_type !== 'webrtc') {
 				throw new Error(
 					`SessionTemplate "${paramsOrTemplateId}" uses platform_type "${template.model_style.platform_type}", but only "webrtc" is supported`
 				);
@@ -119,28 +101,7 @@ async function createSessionIdInternal(
 			params = paramsOrTemplateId;
 		}
 
-		const body: CreateSessionIdBody & {
-			capability: Array<SessionCapabilityName>;
-		} = {
-			capability: [],
-			...params
-		};
-
-		if (params.using_stf_webrtc) {
-			body.capability.push(SessionCapabilityName.STF_WEBRTC);
-		}
-		if (params?.llm_type) {
-			body.capability.push(SessionCapabilityName.LLM);
-			body.llm_type = params.llm_type;
-		}
-		if (params?.tts_type) {
-			body.capability.push(SessionCapabilityName.TTS);
-			body.tts_type = params.tts_type;
-		}
-		if (params?.stt_type) {
-			body.capability.push(SessionCapabilityName.STT);
-			body.stt_type = params.stt_type;
-		}
+		const body = buildSessionCreateBody(params);
 
 		const response = await fetch(`${apiServer}/api/v1/session/`, {
 			body: JSON.stringify(body),
@@ -156,32 +117,6 @@ async function createSessionIdInternal(
 	} catch (err) {
 		throw wrapSessionCreationApiError(err);
 	}
-}
-
-function sessionTemplateToParams(template: SessionTemplate): CreateSessionIdBody {
-	const hasCapability = (name: SessionCapabilityName) =>
-		template.capability.some((c) => c.name === name);
-
-	return {
-		using_stf_webrtc: hasCapability(SessionCapabilityName.STF_WEBRTC),
-		model_style: template.model_style.name,
-		prompt: template.prompt.prompt_id,
-		document: template.document?.document_id,
-		background_image: template.background_image?.backgroundimage_id,
-		mcp_servers: template.mcp_servers?.length
-			? template.mcp_servers.map((m) => m.mcpserver_id)
-			: [],
-		llm_type: hasCapability(SessionCapabilityName.LLM) ? template.llm_type.name : undefined,
-		tts_type: hasCapability(SessionCapabilityName.TTS) ? template.tts_type.name : undefined,
-		stt_type: hasCapability(SessionCapabilityName.STT) ? template.stt_type.name : undefined,
-		text_normalization_config: template.text_normalization_config?.textnormalizationconfig_id,
-		text_normalization_locale: template.text_normalization_locale,
-		stt_text_normalization_config: template.stt_text_normalization_config?.textnormalizationconfig_id,
-		stt_text_normalization_locale: template.stt_text_normalization_locale,
-		padding_left: template.padding_left ?? undefined,
-		padding_top: template.padding_top ?? undefined,
-		padding_height: template.padding_height ?? undefined
-	};
 }
 
 type PromptMetadata = {
