@@ -26,7 +26,8 @@ import {
 	ChatState,
 	ChatTool,
 	type LLMStreamChunk,
-	type ProcessLLMOptions
+	type ProcessLLMOptions,
+	VideoCodec
 } from './types';
 import { createSession as cs, Session } from './session';
 import { DEFAULT_API_SERVER, resolveApiServer } from '../shared/api-server';
@@ -40,6 +41,7 @@ import { WavRecorder, createWavRecorder, type WavRecorderOptions } from './wav-r
 export {
 	ChatState,
 	ChatTool,
+	VideoCodec,
 	type Chat,
 	type LLMStreamChunk,
 	type ProcessLLMOptions,
@@ -86,6 +88,13 @@ export type CreateSessionObjectOptions = {
 	height: number;
 	clientTools: Array<ChatTool>;
 	apiServer?: string;
+	/**
+	 * Pins the avatar video codec. When omitted, the server selects a codec
+	 * during WebRTC negotiation (default). When set, the SDP offer is filtered to
+	 * the chosen codec so the server must answer with it. Throws if the browser
+	 * cannot decode the requested codec.
+	 */
+	videoCodec?: VideoCodec;
 };
 
 /** @overload Object-form. Uses DEFAULT_API_SERVER when apiServer is omitted. */
@@ -131,7 +140,8 @@ export async function createSession(
 			options.sessionId,
 			options.width,
 			options.height,
-			options.clientTools
+			options.clientTools,
+			options.videoCodec
 		);
 	}
 

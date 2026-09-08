@@ -269,6 +269,7 @@ function createSession(options: {
   width: number;
   height: number;
   clientTools: Array<ChatTool>;
+  videoCodec?: VideoCodec;
 }): Promise<Session>;
 ```
 
@@ -278,6 +279,7 @@ function createSession(options: {
 | `width` | Yes | AI avatar video width |
 | `height` | Yes | AI avatar video height |
 | `clientTools` | Yes | Client tools to be registered with the LLM |
+| `videoCodec` | No | Pins the avatar video codec. Omit to let the server pick one during WebRTC negotiation (default). See [Video codec](#video-codec) below. |
 
 ```typescript
 const session = await createSession({
@@ -289,6 +291,24 @@ const session = await createSession({
 ```
 
 **Returns:** Session object
+
+#### Video codec
+
+By default, omit `videoCodec` and the server selects the codec during WebRTC negotiation. Set it only when a specific codec must be used (for example, color-fidelity checks) — the SDK then filters the SDP offer to that codec so the server answers with it:
+
+```typescript
+import { createSession, VideoCodec } from "perso-interactive-sdk-web/client";
+
+const session = await createSession({
+  sessionId,
+  width: 1920,
+  height: 1080,
+  clientTools: [],
+  videoCodec: VideoCodec.H264, // VideoCodec.VP8 ("vp8") | VideoCodec.H264 ("h264")
+});
+```
+
+If `videoCodec` is set but the browser cannot decode it (or exposes no video receive capabilities, e.g. older Safari), `createSession` throws an `Error` whose `name` is `VideoCodecUnsupportedError`. The server must also support encoding the requested codec.
 
 ### Get LLM list
 

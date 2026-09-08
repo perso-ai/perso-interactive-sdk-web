@@ -41,7 +41,8 @@ import {
 	ChatState,
 	ChatTool,
 	type LLMStreamChunk,
-	type ProcessLLMOptions
+	type ProcessLLMOptions,
+	VideoCodec
 } from './types';
 import { WavRecorder } from './wav-recorder';
 import { PcmStreamRecorder } from './pcm-recorder';
@@ -2293,7 +2294,8 @@ export function createSession(
 	sessionId: string,
 	width: number,
 	height: number,
-	clientTools: Array<ChatTool>
+	clientTools: Array<ChatTool>,
+	videoCodec?: VideoCodec
 ): Promise<Session>;
 /**
  * Creates a Session with bidirectional WebRTC audio (legacy mode).
@@ -2314,15 +2316,18 @@ export async function createSession(
 	width: number,
 	height: number,
 	enableVoiceChatOrClientTools: boolean | Array<ChatTool>,
-	clientTools?: Array<ChatTool>
+	clientToolsOrVideoCodec?: Array<ChatTool> | VideoCodec
 ): Promise<Session> {
 	if (typeof enableVoiceChatOrClientTools !== 'boolean') {
-		const perso = await Perso.create(apiServer, sessionId, width, height);
+		// Modern object/positional form: arg5 is clientTools, arg6 is videoCodec.
+		const videoCodec = clientToolsOrVideoCodec as VideoCodec | undefined;
+		const perso = await Perso.create(apiServer, sessionId, width, height, undefined, videoCodec);
 		return new Session(apiServer, sessionId, perso, enableVoiceChatOrClientTools);
 	}
 
+	// Legacy form: arg5 is the enableVoiceChat flag, arg6 is clientTools.
 	const enableVoiceChat = enableVoiceChatOrClientTools;
-	const tools = clientTools ?? [];
+	const tools = (clientToolsOrVideoCodec as Array<ChatTool> | undefined) ?? [];
 
 	let stream: MediaStream;
 	let releaseAudioSourceFunc: VoidFunction;
