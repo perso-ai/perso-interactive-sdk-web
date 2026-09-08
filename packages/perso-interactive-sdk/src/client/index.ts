@@ -46,6 +46,7 @@ export {
 	// Session
 	ChatTool,
 	ChatState,
+	VideoCodec,
 	Session,
 	type Chat,
 	type LLMStreamChunk,

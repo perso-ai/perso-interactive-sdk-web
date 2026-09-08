@@ -1,6 +1,7 @@
 import { STFError, Timeout } from '../shared/error';
 import { PersoUtil, SessionCapabilityName, SessionEvent } from '../shared/perso_util';
 import { decodeTTSAudio } from '../shared/audio';
+import { VideoCodec } from './types';
 
 interface Status {
 	live: boolean;
@@ -96,16 +97,21 @@ export class Perso extends EventTarget {
 	 * @param width Desired avatar canvas width.
 	 * @param height Desired avatar canvas height.
 	 * @param stream Optional local media stream for bidirectional audio (legacy mode).
+	 * @param videoCodec Optional video codec to pin. When set, the SDP offer is
+	 *   filtered to this codec so the server must answer with it; when omitted the
+	 *   server selects a codec during negotiation.
 	 * @returns Ready-to-use `Perso` instance, or `null` when the session has no STF capability.
 	 * @throws ApiError When session event or WebRTC negotiation fails.
 	 * @throws Timeout When remote streams fail to arrive in time.
+	 * @throws Error When `videoCodec` is set but the browser cannot decode it.
 	 */
 	static async create(
 		apiServer: string,
 		sessionId: string,
 		width: number,
 		height: number,
-		stream?: MediaStream
+		stream?: MediaStream,
+		videoCodec?: VideoCodec
 	): Promise<Perso | null> {
 		const sessionInfo = await PersoUtil.getSessionInfo(apiServer, sessionId);
 		const hasSTF =
@@ -120,6 +126,23 @@ export class Perso extends EventTarget {
 			await PersoUtil.sessionEvent(apiServer, sessionId, SessionEvent.SESSION_START);
 			return null;
 		}
+
+		// Resolve the video codec preference before allocating any WebRTC
+		// resources, so a rejected codec pin fails without leaking a peer
+		// connection or data channel (see coding-style WebRTC cleanup rule).
+		const videoCapabilities = RTCRtpReceiver.getCapabilities('video');
+		if (videoCapabilities == null && videoCodec) {
+			// The caller asked to pin a codec but the browser exposes no receive
+			// capabilities to filter (e.g. older Safari). Silently negotiating a
+			// server-chosen codec would defeat the request, so fail loudly.
+			throw videoCodecUnsupportedError(
+				`Cannot pin video codec "${videoCodec}": this browser does not report video receive capabilities`
+			);
+		}
+		const videoCodecs =
+			videoCapabilities != null && videoCodec
+				? filterVideoCodecs(videoCapabilities.codecs, videoCodec)
+				: (videoCapabilities?.codecs ?? null);
 
 		const iceServers = await PersoUtil.getIceServers(apiServer, sessionId);
 
@@ -138,9 +161,8 @@ export class Perso extends EventTarget {
 		}
 
 		const transceiver = pc.addTransceiver('video', { direction: 'recvonly' });
-		const capabilities = RTCRtpReceiver.getCapabilities('video');
-		if (capabilities != null) {
-			transceiver.setCodecPreferences(capabilities.codecs);
+		if (videoCodecs != null) {
+			transceiver.setCodecPreferences(videoCodecs);
 		}
 
 		const offer = await pc.createOffer();
@@ -431,6 +453,54 @@ export class Perso extends EventTarget {
 			reason: 'OK'
 		});
 	}
+}
+
+/**
+ * Auxiliary video codecs (retransmission, redundancy, FEC) that must be kept
+ * alongside the chosen primary codec so retransmission and error correction
+ * keep working after the offer is filtered.
+ */
+const AUXILIARY_VIDEO_CODECS = new Set(['video/rtx', 'video/red', 'video/ulpfec', 'video/flexfec-03']);
+
+/**
+ * `error.name` for a `videoCodec` pin the browser cannot satisfy. Exposed as a
+ * name rather than a public error class: the input is constrained to the
+ * `VideoCodec` enum, so the only runtime failure is "this environment cannot use
+ * the requested codec", and callers who want to react can branch on the name.
+ */
+const VIDEO_CODEC_UNSUPPORTED_ERROR = 'VideoCodecUnsupportedError';
+
+/** Builds a named Error for an unsatisfiable `videoCodec` request. */
+function videoCodecUnsupportedError(message: string): Error {
+	const error = new Error(message);
+	error.name = VIDEO_CODEC_UNSUPPORTED_ERROR;
+	return error;
+}
+
+/**
+ * Filters a receiver's video codec capabilities down to the requested codec
+ * (all of its profile variants) plus the auxiliary codecs. Passing the result
+ * to `setCodecPreferences` removes every other codec from the generated offer,
+ * so the server must answer with the requested codec.
+ *
+ * @throws Error (`VideoCodecUnsupportedError`) When the browser reports no
+ *   receive capability for the codec, since filtering to an empty list would
+ *   make `setCodecPreferences` throw an opaque `InvalidAccessError` and silently
+ *   pinning a different codec would defeat the point of requesting one.
+ */
+function filterVideoCodecs(
+	codecs: RTCRtpCodec[],
+	videoCodec: VideoCodec
+): RTCRtpCodec[] {
+	const wanted = `video/${videoCodec}`.toLowerCase();
+	const primary = codecs.filter((codec) => codec.mimeType.toLowerCase() === wanted);
+	if (primary.length === 0) {
+		throw videoCodecUnsupportedError(
+			`Requested video codec "${videoCodec}" is not supported by this browser`
+		);
+	}
+	const auxiliary = codecs.filter((codec) => AUXILIARY_VIDEO_CODECS.has(codec.mimeType.toLowerCase()));
+	return [...primary, ...auxiliary];
 }
 
 export interface STFMessage {
