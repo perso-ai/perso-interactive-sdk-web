@@ -128,7 +128,7 @@ import { createSessionId, getIntroMessage } from 'perso-interactive-sdk-web/serv
 
   ```ts
   // .env.local
-  PERSO_INTERACTIVE_API_KEY = 'YOUR API KEY';
+  PERSO_INTERACTIVE_API_KEY = 'YOUR API KEY'
   ```
 
 - **apps/vanilla (`@perso-interactive-sdk-web/app-vanilla`)**
