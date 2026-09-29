@@ -126,7 +126,7 @@ export interface STTType {
 /**
  * Response from POST /api/v1/session/{session_id}/stt/.
  *
- * The wire payload includes additional fields (e.g., `locale`,
+ * The wire payload includes additional fields (e.g., `language`,
  * `normalized_text`) that the SDK intentionally does not expose.
  */
 export interface STTResponse {

@@ -1,9 +1,13 @@
 /**
  * Wire types for the session WebSocket (`/api/v1/session/{id}/ws/`, protocol
  * v1). Models the frames the SDK exchanges over the socket: the `session.*`
- * lifecycle, the `stt.*` streaming namespace and whole-utterance `stt.request`,
+ * lifecycle, whole-utterance `stt.*`, the `realtime_stt.*` streaming namespace,
  * and the `llm.*` and `tts.*` namespaces — LLM turns and TTS synthesis now run
  * over the socket rather than REST — plus the shared `cancel.*` frames.
+ *
+ * STT responses name the identified language `language` (e.g. `ko`); `locale`
+ * is TTS vocabulary only (e.g. `ko-KR`). Servers before 2026.09.06 used the
+ * `stt.*` namespace for streaming and `locale` on STT responses.
  *
  * Kept free of DOM dependencies so the shapes can be asserted in Node.
  */
@@ -36,25 +40,36 @@ export interface SessionClosedPayload {
 export interface SttPartialPayload {
 	/** Confirmed prefix plus the current interim hypothesis. */
 	text: string;
-	/** Confirmed prefix only. */
-	final_text: string;
-	/** Present only in end-of-turn detection mode. */
+	/** Confirmed prefix only; never retracted. */
+	finalized_text: string;
+	/** Utterance this partial belongs to. */
 	utterance_seq?: number;
 }
 
+/** One committed utterance of a `realtime_stt.*` stream. */
 export interface SttUtterancePayload {
 	seq: number;
 	text: string;
 	normalized_text: string;
-	locale: string;
+	/** Language the provider identified, e.g. `ko`; `""` when unknown. */
+	language: string;
 }
 
+/** Terminal success of a whole-utterance `stt.request`. */
 export interface SttResultPayload {
 	text: string;
 	normalized_text: string;
-	locale: string;
-	/** Present only in end-of-turn detection mode, where `text` is empty. */
-	utterance_count?: number;
+	/** Language the provider identified, e.g. `ko`; `""` when unknown. */
+	language: string;
+}
+
+/**
+ * Terminal success of a `realtime_stt.*` stream. Carries no text: every
+ * transcript was already delivered as `realtime_stt.utterance`.
+ */
+export interface RealtimeSttFinishedPayload {
+	/** Number of utterances sent; 0 for a silent stream. */
+	utterance_count: number;
 }
 
 export interface SttErrorPayload {
@@ -162,7 +177,7 @@ export interface ErrorEnvelopePayload {
  * Client -> server payloads
  * ---------------------------------------------------------------------- */
 
-/** Raw formats the server accepts on `stt.start`. Browsers only ever send `pcm_s16le`. */
+/** Raw formats the SDK may declare on `realtime_stt.start`. Browsers only ever send `pcm_s16le`. */
 export type SttAudioFormat = 'pcm_s16le' | 'pcm_s24le' | 'pcm_s32le' | 'pcm_u8';
 
 export interface SttStartPayload {
@@ -185,7 +200,7 @@ export type LlmMessage = Record<string, unknown>;
 
 /**
  * Whole-utterance STT over WS (protocol section 4). The streaming counterpart is
- * `stt.start` / `stt.audio_chunk` / `stt.stop`.
+ * `realtime_stt.start` / `realtime_stt.audio_chunk` / `realtime_stt.stop`.
  */
 export interface SttRequestPayload {
 	/** Entire utterance, base64. Capped at {@link MAX_STT_AUDIO_B64_CHARS}. */
@@ -211,7 +226,7 @@ export interface TtsRequestPayload {
 	/** Capped at {@link MAX_TTS_TEXT_CHARS}. */
 	text: string;
 	locale?: string;
-	/** `StreamingTTSView` vocabulary (`pcm`, `pcm_24000`, `mp3`, `wav`, …). `pcm` = `pcm_24000`. */
+	/** Only `pcm_24000` (alias `pcm`) is accepted over WS; others draw `bad_request`. */
 	output_format?: string;
 }
 
@@ -224,9 +239,9 @@ export interface TtsRequestPayload {
  * server relays the recognition provider's own codes verbatim, so compare
  * against these constants and let unknown values through.
  *
- * Most arrive in an `stt.error` frame; the few marked below are raised by the
- * SDK without a round trip, and are listed here so one table covers everything
- * a caller can receive.
+ * Most arrive in an `stt.error` or `realtime_stt.error` frame; the few marked
+ * below are raised by the SDK without a round trip, and are listed here so one
+ * table covers everything a caller can receive.
  */
 export const STT_ERROR_CODE = {
 	/** Client-requested abort via `cancel.request`. Not a failure. */
@@ -234,6 +249,12 @@ export const STT_ERROR_CODE = {
 	/** The session's STT type does not allow this interaction mode. */
 	MODE_UNSUPPORTED: 'mode_unsupported',
 	STREAM_BUSY: 'stream_busy',
+	/** `realtime_stt.start` found the connection's shared STT in-flight cap full. */
+	REALTIME_STT_BUSY: 'realtime_stt_busy',
+	/** The request payload failed server-side validation; `reason` names the field. */
+	BAD_REQUEST: 'bad_request',
+	/** Fallback for any other server-side STT failure. */
+	API_ERROR: 'stt_api_error',
 	STREAM_STATE: 'stream_state',
 	STREAM_IDLE_TIMEOUT: 'stream_idle_timeout',
 	STREAM_MAX_DURATION: 'stream_max_duration',
@@ -249,9 +270,9 @@ export const STT_ERROR_CODE = {
 	 * rather than something an app tunes its way out of.
 	 */
 	CHUNK_TOO_LARGE: 'chunk_too_large',
-	/** SDK-raised: no terminal frame arrived within the post-`stt.stop` wait. */
+	/** SDK-raised: no terminal frame arrived within the post-`realtime_stt.stop` wait. */
 	TERMINAL_TIMEOUT: 'terminal_timeout',
-	/** SDK-raised: the server never acknowledged `stt.start` with `stt.started`. */
+	/** SDK-raised: the server never acknowledged `realtime_stt.start` with `realtime_stt.started`. */
 	START_TIMEOUT: 'start_timeout'
 } as const;
 
@@ -336,14 +357,17 @@ export const WS_TYPE = {
 	SESSION_DISPLACED: 'session.displaced',
 	/** Whole-utterance STT (protocol section 4). */
 	STT_REQUEST: 'stt.request',
-	STT_START: 'stt.start',
-	STT_AUDIO_CHUNK: 'stt.audio_chunk',
-	STT_STOP: 'stt.stop',
-	STT_STARTED: 'stt.started',
-	STT_PARTIAL: 'stt.partial',
-	STT_UTTERANCE: 'stt.utterance',
 	STT_RESULT: 'stt.result',
 	STT_ERROR: 'stt.error',
+	/** Streaming STT (protocol section 4.5). */
+	REALTIME_STT_START: 'realtime_stt.start',
+	REALTIME_STT_AUDIO_CHUNK: 'realtime_stt.audio_chunk',
+	REALTIME_STT_STOP: 'realtime_stt.stop',
+	REALTIME_STT_STARTED: 'realtime_stt.started',
+	REALTIME_STT_PARTIAL: 'realtime_stt.partial',
+	REALTIME_STT_UTTERANCE: 'realtime_stt.utterance',
+	REALTIME_STT_FINISHED: 'realtime_stt.finished',
+	REALTIME_STT_ERROR: 'realtime_stt.error',
 	/** LLM over WS (protocol section 5). */
 	LLM_REQUEST: 'llm.request',
 	LLM_DELTA: 'llm.delta',
@@ -361,7 +385,7 @@ export const WS_TYPE = {
 } as const;
 
 /**
- * Server cap on one `stt.audio_chunk`'s base64 payload
+ * Server cap on one `realtime_stt.audio_chunk`'s base64 payload
  * (`MAX_STT_CHUNK_B64_CHARS`).
  *
  * The SDK's 100 ms chunk encodes to roughly 4 KB at 16 kHz — about 1/120th of
@@ -431,11 +455,6 @@ export function parseEnvelope(raw: string): WsEnvelope | null {
 		...(typeof frame.ts === 'number' && { ts: frame.ts }),
 		payload
 	};
-}
-
-/** Whether a frame belongs to the `stt.*` namespace and to the given stream. */
-export function isSttFrameFor(frame: WsEnvelope, streamId: string): boolean {
-	return frame.type.startsWith('stt.') && frame.id === streamId;
 }
 
 /** Whether a frame belongs to the `llm.*` namespace and to the given request. */

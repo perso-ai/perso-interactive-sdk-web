@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
@@ -23,10 +23,15 @@ const repoRoot = resolve(docsRoot, '..', '..');
 
 export const versions: DocsVersion[] = [
 	{
-		label: 'v1.7.0 (latest)',
+		label: 'v1.8.0 (latest)',
 		base: '',
 		apiDocsPath: resolve(repoRoot, 'core/api-docs.md'),
 		isLatest: true,
+	},
+	{
+		label: 'v1.7',
+		base: '/v1.7',
+		apiDocsPath: resolve(docsRoot, 'v1.7/api-docs.md'),
 	},
 	{
 		label: 'v1.6',
@@ -42,17 +47,24 @@ export const versions: DocsVersion[] = [
 
 export const latestVersion = versions.find((v) => v.isLatest) ?? versions[0];
 
-// Mirrors VitePress's default heading anchor generation (github-slugger style)
-// closely enough for the heading shapes used here (alphanumerics + spaces +
-// hyphens + CJK). If we ever add headings with punctuation like `()` or `&`,
-// switch to `@mdit-vue/shared`'s `slugify` for guaranteed parity with the
-// IDs VitePress assigns at render time.
+// VitePress's own heading-id rule (vitepress 1.6 / @mdit-vue/shared `slugify`),
+// copied so sidebar links match the ids it renders. A lossy approximation broke
+// headings with punctuation: "Migrating from 1.6.x" is `migrating-from-1-6-x`,
+// not `migrating-from-16x`. Re-check against the build after a VitePress upgrade.
+const rControl = /[\u0000-\u001f]/g;
+const rSpecial = /[\s~`!@#$%^&*()\-_+=[\]{}|\\;:"'“”‘’<>,.?/]+/g;
+const rCombining = /[\u0300-\u036F]/g;
+
 function slugify(text: string): string {
 	return text
-		.toLowerCase()
-		.replace(/[^\w一-龥\- ]/g, '')
-		.trim()
-		.replace(/\s+/g, '-');
+		.normalize('NFKD')
+		.replace(rCombining, '')
+		.replace(rControl, '')
+		.replace(rSpecial, '-')
+		.replace(/-{2,}/g, '-')
+		.replace(/^-+|-+$/g, '')
+		.replace(/^(\d)/, '_$1')
+		.toLowerCase();
 }
 
 function readHeadings(filePath: string): string[] {
@@ -123,9 +135,9 @@ export function buildGuideSidebar(version: DocsVersion): DefaultTheme.SidebarIte
 	const items: DefaultTheme.SidebarItem[] = [
 		{ text: 'Getting Started', link: `${guideBase}/getting-started` },
 	];
-	// Pipeline Recipes exists only for the latest version; archived snapshots
-	// keep the single Getting Started page they shipped with.
-	if (version.isLatest) {
+	// Pipeline Recipes first shipped with v1.7. Each version lists it only if its
+	// own guide has the page, so older snapshots keep just Getting Started.
+	if (existsSync(resolve(docsRoot, `.${guideBase}/pipelines.md`))) {
 		items.push({ text: 'Pipeline Recipes', link: `${guideBase}/pipelines` });
 	}
 	return [{ text: 'Guide', items }];

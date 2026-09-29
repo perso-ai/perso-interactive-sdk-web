@@ -100,14 +100,15 @@ export type { StreamingTTSOutputFormat } from '../shared/types';
 // Client-side session creation (exposes API key - use with caution)
 export { createSessionId } from './init';
 
-// Streaming STT. The transport is chosen from the session's STT type, so these
-// are result shapes and options rather than an alternative entry point:
-// startProcessSTT()/stopProcessSTT() drive both modes.
-// SttStreamResult is intentionally not re-exported: stopProcessSTT() resolves to
-// a plain string, so no public method hands the caller that shape. The reachable
-// callback types stay public.
-export type { SttPartial, SttUtterance, SttResultMeta } from './stt-stream';
+// Streaming STT payloads: the `partial` / `utterance` events of startRealtimeSTT().
+// SttStreamResult is intentionally not re-exported: no public method hands the
+// caller that shape.
+export type { SttPartial, SttUtterance } from './stt-stream';
 export type { StartProcessSTTOptions } from './session';
+
+// Realtime STT: one start -> stop cycle read as a single `for await` event
+// stream, separate from startProcessSTT()/stopProcessSTT() and the subscribe API.
+export type { RealtimeSttEvent, RealtimeSttOptions, RealtimeSttStream } from './realtime-stt';
 
 // Per-modality error-code tables to match `STTError.code` / `TTSError.code` /
 // `LLMError.code` against — the actionable codes are `cancelled` (a client

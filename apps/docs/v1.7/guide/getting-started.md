@@ -1,10 +1,18 @@
+---
+search: false
+---
+
+::: warning Archived version
+You're viewing **v1.7**. The latest version is **[here](/guide/getting-started.md)**.
+:::
+
 # Getting Started
 
 The Perso Interactive SDK lets you embed a real-time, WebRTC-based AI avatar
 session in a web app, with LLM chat, TTS/STT, and client-side tool calls.
 
 This page is a short orientation. For the complete API surface, see the
-[API Reference](/api/).
+[API Reference](/v1.7/api/).
 
 ## Install
 
@@ -115,7 +123,7 @@ if (audioBlob) {
 rather than uploaded as a file. The second argument is a legacy format hint and is
 **ignored** — the container is detected from the audio bytes — and the call
 resolves with `void`, not a file reference. See
-[How audio reaches the avatar (STF)](/api/#how-audio-reaches-the-avatar-stf).
+[How audio reaches the avatar (STF)](/v1.7/api/#how-audio-reaches-the-avatar-stf).
 
 With voice input (STT → LLM → TTS → STF):
 
@@ -184,59 +192,59 @@ that can differ per environment for the same voice, so check the environment you
 target with `getSessionInfo()`.
 :::
 
-See [Only a streamable voice may stream](/api/#only-a-streamable-voice-may-stream)
-for the full table and [Streaming TTS (PCM)](/api/#streaming-tts-pcm) for the
+See [Only a streamable voice may stream](/v1.7/api/#only-a-streamable-voice-may-stream)
+for the full table and [Streaming TTS (PCM)](/v1.7/api/#streaming-tts-pcm) for the
 wire format.
 
 ### Speech recognition modes
 
 An STT type works in one of two modes, fixed when the session is created.
-`NON_STREAMING` records the whole utterance and transcribes it on stop via
-`startProcessSTT({ language })` / `stopProcessSTT()`. `STREAMING` streams audio as the user
-speaks; use `startRealtimeSTT()`, which returns an event stream you read with
-`for await`. The two modes require different calling code.
+`NON_STREAMING` records the whole utterance and transcribes it on stop.
+`STREAMING` streams audio as the user speaks, so interim text
+arrives mid-utterance.
 
-`STREAMING` — one cycle per press, with interim hypotheses:
+**You do not select the transport.** `startProcessSTT()` reads the session's STT
+type and uses the matching one, so the snippet above works unchanged for both.
+To use streaming, pass a streaming `stt_type` to `createSessionId()` — find one
+with `getSTTs()`, whose `mode` and `end_of_turn_detection` fields identify them.
+
+Interim results are opt-in, since a hypothesis is not a settled transcript.
+Subscribe with `subscribeSttPartials` — it never fires on a non-streaming session:
 
 ```ts
-const stt = session.startRealtimeSTT({ language: 'ko' });
-button.onpointerup = () => stt.stop();
-for await (const event of stt) {
-  if (event.type === 'partial') showInterim(event.text);
-  if (event.type === 'utterance') await reply(event.text);
-}
+session.subscribeSttPartials(({ text, finalText }) => showInterim(text, finalText));
+await session.startProcessSTT({ language: 'ko' });
+const text = await session.stopProcessSTT();
 ```
 
-One `startRealtimeSTT()` call is one cycle: `stop()` (or breaking out of the loop)
-ends it immediately, releasing the mic. Failures throw from the loop — wrap it in
-`try/catch`.
-
-With `end_of_turn_detection` the microphone stays open for the whole conversation
-and each utterance is committed automatically. Keep the same `for await` pattern;
-the difference is that multiple `utterance` events arrive without calling `stop()`:
+When the STT type sets `end_of_turn_detection`, the provider detects utterance
+boundaries itself: the microphone stays open for the whole conversation and each
+committed utterance (one turn) is delivered as a whole `SttUtterance`. Subscribe
+with `subscribeSttUtterances` **before** starting — without a subscriber there is
+nowhere for utterances to go, so the call is rejected rather than dropping them
+silently. (The interim partials within each utterance come from
+`subscribeSttPartials`, linked by `utteranceSeq`.)
 
 ```ts
-const stt = session.startRealtimeSTT({ language: 'ko' });
-endButton.onclick = () => stt.stop();
-for await (const event of stt) {
-  if (event.type === 'utterance') {
-    for await (const chunk of session.processLLM({ message: event.text })) {
-      if (chunk.type === 'message' && chunk.finish) session.processTTSTF(chunk.message);
-    }
+session.subscribeSttUtterances(async (utterance) => {
+  for await (const chunk of session.processLLM({ message: utterance.text })) {
+    if (chunk.type === 'message' && chunk.finish) session.processTTSTF(chunk.message);
   }
-}
+});
+
+await session.startProcessSTT(); // mic stays open; utterances arrive via the subscriber
 ```
 
-`mode` picks the call; `end_of_turn_detection` then shapes the UI: a microphone
-that stays open needs a live indicator rather than a press-and-hold button.
+So `end_of_turn_detection` — not `mode` — is the value your UI branches on: a
+microphone that stays open needs a live indicator rather than a press-and-hold
+button, and each transcript arrives on the subscriber instead of as a return value.
 
 ::: warning
 Streaming STT requires a backend serving `/api/v1/settings/stt_type/v2/`.
 Against an older server every STT type is treated as `NON_STREAMING`.
-Since SDK 1.8.0 it also needs server 2026.09.06 or later (`realtime_stt.*` frames).
 :::
 
-See [STT interaction modes](/api/#stt-interaction-modes) for the full reference.
+See [STT interaction modes](/v1.7/api/#stt-interaction-modes) for the full reference.
 
 ### Direct Speech — processTTSTF
 
@@ -280,7 +288,7 @@ const session = await createSession({
 });
 ```
 
-See [ChatTool](/api/#chattool) for the argument shapes and a full interaction
+See [ChatTool](/v1.7/api/#chattool) for the argument shapes and a full interaction
 trace.
 
 ### Legacy — processChat
@@ -318,15 +326,13 @@ session.stopSession();               // tear down WebRTC + media
 
 `clearBuffer()` is what a "stop speaking" button calls. It drops the audio the
 avatar has not spoken yet and also stops a live source `processSTF()` is still
-consuming, so a barged-in turn ends instead of queueing behind the old one. An open
-`startRealtimeSTT()` cycle keeps recording after `clearBuffer()` — call `stt.stop()`
-to end the cycle as well.
+consuming, so a barged-in turn ends instead of queueing behind the old one.
 
 ## Where to go next
 
-- [Pipeline Recipes](/guide/pipelines) — task-oriented, copy-paste recipes that
+- [Pipeline Recipes](/v1.7/guide/pipelines) — task-oriented, copy-paste recipes that
   compose these APIs into complete flows, with a pipeline-selection guide.
-- [API Reference](/api/) — full function/type signatures, return shapes, and
+- [API Reference](/v1.7/api/) — full function/type signatures, return shapes, and
   error hierarchy.
 - [README on npm](https://www.npmjs.com/package/perso-interactive-sdk-web) —
   quick install snippets and project links.

@@ -87,6 +87,27 @@ export class WavRecorder {
 		// Request microphone access
 		this.mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
+		try {
+			await this.connectGraph(this.mediaStream);
+		} catch (error) {
+			// The mic is already open, and a recorder that never started cannot be
+			// stopped, so release everything here before surfacing the failure.
+			this.workletNode?.disconnect();
+			this.sourceNode?.disconnect();
+			this.mediaStream.getTracks().forEach((track) => track.stop());
+			await this.audioContext?.close().catch(() => undefined);
+			this.audioContext = null;
+			this.mediaStream = null;
+			this.workletNode = null;
+			this.sourceNode = null;
+			throw error;
+		}
+
+		this.isRecordingState = true;
+	}
+
+	/** Builds the capture graph for an already-granted microphone stream. */
+	private async connectGraph(mediaStream: MediaStream): Promise<void> {
 		// Create AudioContext (uses device's default sample rate)
 		// Resampling to target rate will be done in stop() using OfflineAudioContext
 		this.audioContext = new AudioContext();
@@ -108,7 +129,7 @@ export class WavRecorder {
 		await this.audioContext.audioWorklet.addModule(WORKLET_DATA_URL);
 
 		// Create source node from microphone stream
-		this.sourceNode = this.audioContext.createMediaStreamSource(this.mediaStream);
+		this.sourceNode = this.audioContext.createMediaStreamSource(mediaStream);
 
 		// Create AudioWorkletNode
 		this.workletNode = new AudioWorkletNode(this.audioContext, 'recorder-processor');
@@ -128,8 +149,6 @@ export class WavRecorder {
 		this.sourceNode.connect(this.workletNode);
 		// Connect to destination to keep the audio graph alive (silent output)
 		this.workletNode.connect(this.audioContext.destination);
-
-		this.isRecordingState = true;
 	}
 
 	/**

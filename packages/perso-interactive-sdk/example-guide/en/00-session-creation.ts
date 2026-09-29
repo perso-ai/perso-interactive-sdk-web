@@ -186,8 +186,8 @@ async function example_templateWithFallback(
  *   - NotInOrganizationError — code 'not_in_organization': the LLM/TTS/STT type
  *                              exists but is not enabled for your organization
  *
- * The template path can also throw a plain Error before any request is sent,
- * when the template's model_style.platform_type is not 'webrtc'.
+ * A model style that cannot run on WebRTC arrives the same way, as a
+ * SessionCreationError with code 'invalid_platform_type'.
  */
 async function example_creationErrorHandling(
 	apiServer: string,
@@ -204,7 +204,6 @@ async function example_creationErrorHandling(
 		} else if (error instanceof SessionCreationError) {
 			console.error(`Session creation failed (${error.errorCode} ${error.code}):`, error.detail);
 		} else {
-			// e.g. a template whose model_style.platform_type is not 'webrtc'
 			throw error;
 		}
 		return undefined;

@@ -18,50 +18,6 @@ DEFAULT_API_SERVER; // "https://platform.perso.ai"
 const stageSettings = await getAllSettings({ apiKey, apiServer: "https://stage-platform.perso.ai" });
 ```
 
-## Migrating from 1.7.x
-
-Streaming STT moved to a dedicated `startRealtimeSTT()` API and the `realtime_stt.*`
-server namespace (server 2026.09.06+). The subscribe API is gone.
-
-| What you used | What to do |
-|---------------|------------|
-| `startProcessSTT()` / `stopProcessSTT()` on a `STREAMING` session | Use `startRealtimeSTT()`; `startProcessSTT()` now rejects a `STREAMING` session with `STTError` `code: 'mode_unsupported'` before the mic opens |
-| `subscribeSttPartials(cb)` / `subscribeSttUtterances(cb)` | Removed. Read `partial` / `utterance` events from the `startRealtimeSTT()` loop — no pre-registration needed |
-| `setSttResultCallback((text, meta) => ...)` | `meta` (`SttResultMeta`) removed. The callback is now `(text: string) => void` and serves only the legacy `startVoiceChat()` DataChannel path — transcripts come from `stopProcessSTT()` or the `startRealtimeSTT()` loop |
-| `SttUtterance.locale` | Renamed to `SttUtterance.language` (e.g. `'ko'`; `''` when unknown). TTS `locale` (e.g. `'ko-KR'`) is unchanged |
-| `stopProcessSTT(language)` on a `STREAMING` session | No streaming path any more. `startProcessSTT({ language })` is now the `language` default for `stopProcessSTT()` |
-| `startProcessSTT({ timeout })` on a `STREAMING` session | Streaming sessions have no timeout option. Call `stt.stop()` for an app-level limit (e.g. `AbortSignal.timeout`); the server enforces `stream_max_duration` (600 s / 3600 s with EOT) and `stream_idle_timeout` (30 s) |
-| `clearBuffer()` to cancel an in-flight streaming STT stream | `clearBuffer()` no longer cancels a `startRealtimeSTT()` cycle — the cycle keeps recording. End it with `stt.stop()` |
-| Streaming STT failures reaching `setErrorHandler` | Failures throw from the `startRealtimeSTT()` loop; `setErrorHandler` does not see them |
-| `STTError.code === 'realtime_stt_busy'` / `'bad_request'` / `'stt_api_error'` | New codes in 1.8.0 — add handling or fall through to your default `error.code` branch |
-
-**Server requirement:** streaming STT in 1.8.0 requires server 2026.09.06 or later
-(the `realtime_stt.*` frame namespace).
-
-**Before / after — streaming STT:**
-
-```typescript
-// 1.7.x
-session.subscribeSttPartials((p) => showInterim(p.text));
-session.subscribeSttUtterances((u) => reply(u.text)); // u.locale was the language
-await session.startProcessSTT({ language: 'ko' });
-// (when done)
-await session.stopProcessSTT();
-
-// 1.8.0
-const stt = session.startRealtimeSTT({ language: 'ko' });
-stopButton.onclick = () => stt.stop(); // only stop() (or break) ends the cycle
-try {
-  for await (const event of stt) {
-    if (event.type === 'partial') showInterim(event.text);
-    if (event.type === 'utterance') reply(event.text); // event.language, not .locale
-  }
-} catch (error) {
-  if (error instanceof STTError) console.error('STT failed:', error.code);
-  else console.error('Mic error:', error);
-}
-```
-
 ## Migrating from 1.6.x
 
 Client-side audio now reaches the avatar one way — streamed.
@@ -93,7 +49,7 @@ await session.processSTF(blob, undefined, text);
 Two call shapes are supported via a discriminated options object:
 
 - **Form A** — pass `params` with explicit runtime options.
-- **Form B** — pass `sessionTemplateId` to create a session from a SessionTemplate. The SDK resolves the template and maps its fields to the request body.
+- **Form B** — pass `sessionTemplateId` to create a session from a SessionTemplate. The SDK resolves the template and maps its fields to the request body. Throws if the template's `model_style.platform_type` is not `"webrtc"`.
 
 ```typescript
 // Form A: Create from explicit params
@@ -131,7 +87,7 @@ function createSessionId(options: {
 |-------|----------|-------------|
 | `apiKey` | Yes | API Key |
 | `params` | Form A | Explicit runtime options (see the `params.*` table below). |
-| `sessionTemplateId` | Form B | SessionTemplate ID. The SDK resolves the template and maps its fields to the request body. |
+| `sessionTemplateId` | Form B | SessionTemplate ID. The SDK resolves the template and maps its fields to the request body. Throws if `model_style.platform_type` is not `"webrtc"`. |
 | `params.using_stf_webrtc` | Yes | Whether to enable the STF WebRTC pipeline (set to `true` for the SDK demos). Selects the `STF_WEBRTC` capability. |
 | `params.model_style` | No | ModelStyle `name` — the avatar the STF capability renders. |
 | `params.prompt` | No | Prompt `prompt_id`, used by the LLM capability. |
@@ -176,7 +132,7 @@ const sessionId = await createSessionId({
 **Throws:**
 
 - `SessionCreationError` (subclass of `ApiError`) when the API rejects the request. `code` `does_not_exist` and `not_in_organization` arrive as the `DoesNotExistError` / `NotInOrganizationError` subclasses.
-- A `400` with `code: 'invalid_platform_type'` and `attr: 'model_style'` when the selected ModelStyle cannot run on WebRTC. The server decides this for both forms; the SDK does not check `platform_type` itself.
+- A `400` with `code: 'invalid_platform_type'` and `attr: 'model_style'` when the selected ModelStyle's `platform_type` does not match the requested STF capability — `STF_WEBRTC` needs `"webrtc"`. Form B catches this client-side and throws before the request; Form A learns it from the server.
 
 #### Capabilities
 
@@ -992,7 +948,7 @@ function getSessionInfo(options: {
 const info = await getSessionInfo({ sessionId });
 
 if (info.stt_type?.mode === 'STREAMING') {
-  // Use startRealtimeSTT(); startProcessSTT() rejects a STREAMING session
+  // startProcessSTT() will stream interim results while the user speaks
 }
 ```
 
@@ -1038,9 +994,8 @@ them required: a session created without a background image or a normalization
 config omits them, and a non-null promise here would turn a missing field into a
 property access on `null`.
 
-`stt_type` is the field the SDK reads to decide which interaction mode is available.
-`stt_type.mode === 'STREAMING'` requires `startRealtimeSTT()`; `NON_STREAMING`
-(or no `stt_type`) requires `startProcessSTT()` — see [STT interaction modes](#stt-interaction-modes).
+`stt_type` is the field the SDK reads to decide whether `startProcessSTT()`
+streams or records — see [STT interaction modes](#stt-interaction-modes).
 
 `termination_reason` is an **open string**, not a union: the server adds reasons
 without a protocol bump. Known values are `GRACEFUL_TERMINATION`,
@@ -1175,9 +1130,9 @@ function transcribeAudio(audio: Blob | File, language?: string): Promise<string>
 **Throws:**
 - `STTError` if the request fails — the server's error code is on `.code`; when the connection could not be opened, `.code` carries the connection reason (an open string) instead
 - `STTError` with `code: 'chunk_too_large'`, raised locally before anything is sent, when the audio exceeds 5 MiB as base64
-- `Error` on a session whose STT type is streaming-only — use [`startRealtimeSTT()`](#realtime-stt-event-stream) instead
+- `Error` on a session whose STT type is streaming-only — use `startProcessSTT()`/`stopProcessSTT()` instead
 
-Converts audio to text using the STT API. This is a lower-level method compared to `startProcessSTT()`/`stopProcessSTT()` (and, on a `STREAMING` session, `startRealtimeSTT()`) - use it when you have pre-recorded audio or audio from external sources.
+Converts audio to text using the STT API. This is a lower-level method compared to `startProcessSTT()`/`stopProcessSTT()` - use it when you have pre-recorded audio or audio from external sources.
 
 **Example usage:**
 
@@ -1212,12 +1167,12 @@ interface STTResponse {
 
 **Returns:** `STTResponse` containing the transcribed text.
 
-> The server's `stt.result` frame also carries `language` and `normalized_text`. The SDK keeps only `text`, so they are not exposed by `STTResponse`.
+> The server's `stt.result` frame also carries `locale` and `normalized_text`. The SDK keeps only `text`, so they are not exposed by `STTResponse`.
 
 **Throws:**
 - `STTError` if the request fails — the server's error code is on `.code`; when the connection could not be opened, `.code` carries the connection reason (an open string) instead
 - `STTError` with `code: 'chunk_too_large'`, raised locally before anything is sent, when the audio exceeds 5 MiB as base64
-- `Error` on a session whose STT type is streaming-only — use [`startRealtimeSTT()`](#realtime-stt-event-stream) instead
+- `Error` on a session whose STT type is streaming-only — use `startProcessSTT()`/`stopProcessSTT()` instead
 
 Same as `transcribeAudio()` but returns the `STTResponse` object form. Use this when you want an extensible result shape rather than a bare string.
 
@@ -1548,13 +1503,12 @@ You can stop the AI avatar's response. If called before speech starts, the pendi
 
 This is the barge-in call. Beyond the server-side speech buffer it cancels everything the SDK is driving on the caller's behalf:
 
+- an in-flight streaming STT stream — cancelled and the microphone released; a pending `stopProcessSTT()` rejects with `STTError` `code: 'cancelled'`
 - the active STF turn — a pending `processSTF()` **resolves**, and a live source stops being pulled
 - the deprecated `processChat()` job
 - any streaming TTS request — a cancel is sent at once (not deferred to the next chunk), a pending `processTTS()` resolves `undefined`, and an open `processStreamingTTS()` stream ends silently with no further chunks and nothing reported to the error handler
 
 It does **not** cancel a `processLLM()` generator the caller is iterating. Pass an `AbortSignal` in `ProcessLLMOptions` and abort it instead.
-
-It also leaves an open [`startRealtimeSTT()`](#realtime-stt-event-stream) cycle running, so a barge-in stops the avatar without ending the listening cycle.
 
 ### STT interaction modes
 
@@ -1570,35 +1524,36 @@ session is created:
 the provider detects utterance boundaries itself, so a single recording carries
 a whole conversation and each utterance is delivered as it is committed.
 
-The two modes are mutually exclusive, fixed by the session's STT type. **The calling
-code differs between modes.** `startProcessSTT()` serves `NON_STREAMING` sessions
-only — it rejects with `STTError` `code: 'mode_unsupported'` on a `STREAMING` session.
-`startRealtimeSTT()` serves `STREAMING` sessions only — on a `NON_STREAMING`
-session it returns the stream synchronously, but the loop throws `STTError`
-`code: 'mode_unsupported'` before the mic opens. Choose the behavior by passing
-the appropriate `stt_type` to `createSessionId()`.
+The two modes are mutually exclusive, fixed by the session's STT type. **You do not select the
+transport.** `startProcessSTT()` reads the session's STT type and uses the matching one, so the same
+calling code works for both. Choose the behavior by passing a streaming `stt_type` to
+`createSessionId()`.
 
 Discover which types support streaming with `getSTTs()`, whose `mode` and
 `end_of_turn_detection` fields identify them.
 
 > **Server requirement:** streaming STT needs a backend that serves
 > `/api/v1/settings/stt_type/v2/`. Against an older server all STT types are
-> treated as `NON_STREAMING`. Since SDK 1.8.0 it also needs server 2026.09.06 or
-> later, which speaks the `realtime_stt.*` stream frames.
+> treated as `NON_STREAMING`.
 
-#### What the caller has to know
+#### What the caller still has to know
 
-The mode determines *which call to make*, *where the transcript arrives*, and
-*whether the microphone stays open* — all visible to the user, so the UI has to know.
+The transport is hidden; the interaction model is not. What the SDK cannot hide
+is *where the transcript arrives* and *whether the microphone stays open* —
+both are visible to the user, so the UI has to know.
 
-| Session | Call | Transcript arrives at | Microphone | UI shape |
-|---------|------|-----------------------|------------|----------|
-| `NON_STREAMING` | `startProcessSTT()` / `stopProcessSTT()` | `stopProcessSTT()` return value | Opened per turn | Push-to-talk |
-| `STREAMING` | [`startRealtimeSTT()`](#realtime-stt-event-stream) | `partial` / `utterance` events in the loop | Opened per turn | Push-to-talk + provisional text |
-| `STREAMING` + `end_of_turn_detection` | [`startRealtimeSTT()`](#realtime-stt-event-stream) | **`utterance` events** in the loop | **Open for the whole conversation** | Live indicator, no button |
+| Session | Transcript arrives at | Microphone | UI shape |
+|---------|----------------------|------------|----------|
+| `NON_STREAMING` | `stopProcessSTT()` return value | Opened per turn | Push-to-talk |
+| `STREAMING` | Same, plus `subscribeSttPartials` for interim text | Opened per turn | Push-to-talk + provisional text |
+| `STREAMING` + `end_of_turn_detection` | **`subscribeSttUtterances`** | **Open for the whole conversation** | Live indicator, no button |
 
-`mode` picks the call; `end_of_turn_detection` then shapes the UI:
+The third row differs in kind, which makes `end_of_turn_detection` — not `mode`
+— the value worth branching on:
 
+- **Without it you cannot even start.** `startProcessSTT()` rejects on an
+  end-of-turn session with no utterance subscriber registered, rather than dropping
+  every utterance silently.
 - **The UI shape differs.** A microphone that stays open for the conversation
   has no press-and-hold button; it needs a live indicator and a barge-in path
   (`clearBuffer()`).
@@ -1607,7 +1562,12 @@ The mode determines *which call to make*, *where the transcript arrives*, and
   non-streaming one, so an "upload a file" or "play back what I said" control
   has to be hidden accordingly.
 
-Most applications never query this at runtime. Whoever creates the session picks the
+What *is* hidden stays hidden: `subscribeSttPartials` is inert on a
+`NON_STREAMING` session (it never fires) and `language` works on both, so a single
+call site compiles and runs correctly for all three rows. Only the surrounding UI
+and the subscription change.
+
+Most applications never query this. Whoever creates the session picks the
 `stt_type`, so the mode is already known and can be passed to the client.
 `getSessionInfo()` is for the case where it is not — a session created by
 another service, or a template-created session where the browser receives only
@@ -1615,23 +1575,15 @@ the id. It needs no API key.
 
 ```typescript
 const info = await getSessionInfo({ sessionId });
-const isStreaming = info.stt_type?.mode === 'STREAMING';
 const alwaysOn = info.stt_type?.end_of_turn_detection === true;
 
-if (isStreaming) {
-  const stt = session.startRealtimeSTT({ language: 'ko' });
-  // Only stop() ends a cycle, with or without end-of-turn detection:
-  // release-to-send for push-to-talk, "end conversation" when alwaysOn.
-  stopButton.onclick = () => stt.stop();
-  for await (const event of stt) {
-    if (event.type === 'partial') showInterim(event.text);
-    if (event.type === 'utterance') await reply(event.text);
-  }
+if (alwaysOn) {
+  // Utterances arrive on the subscriber, which must be registered before start.
+  session.subscribeSttUtterances(handleUtterance);
+  renderLiveIndicator();
 } else {
-  // NON_STREAMING: the transcript comes back from stopProcessSTT().
-  await session.startProcessSTT({ language: 'ko' });
-  const text = await session.stopProcessSTT();
-  await reply(text);
+  // The transcript comes back from stopProcessSTT().
+  renderPushToTalkButton();
 }
 ```
 
@@ -1648,24 +1600,35 @@ function startProcessSTT(options?: {
 | Parameter | Required | Description |
 |-----------|----------|-------------|
 | `timeout` | No | Milliseconds after which recording stops automatically |
-| `options.language` | No | Language code (e.g. `'ko'`). Passed as the default for the following `stopProcessSTT()` call; an explicit `stopProcessSTT(language)` wins |
+| `options.language` | No | Language code (e.g. `'ko'`). Streaming declares it up front |
 
-Starts microphone recording on a `NON_STREAMING` session. The whole utterance is
-recorded locally (WAV) and sent for transcription when `stopProcessSTT()` is called.
+Interim hypotheses are delivered through `subscribeSttPartials()`, not this call.
 
-On a `STREAMING` session this call rejects immediately with `STTError`
-`code: 'mode_unsupported'` before the microphone opens. Use
-[`startRealtimeSTT()`](#realtime-stt-event-stream) there instead.
+Starts recording audio for STT (Speech-To-Text) processing.
 
-**How it works:**
+**How it works — `NON_STREAMING`:**
 1. Records the microphone (client-side)
 2. Sends the whole utterance for transcription on `stopProcessSTT()`
-3. Returns the transcribed text via `stopProcessSTT()`
+3. Returns transcribed text
+
+**How it works — `STREAMING`:**
+1. Captures audio and sends it as it arrives
+2. Emits interim hypotheses to `subscribeSttPartials` subscribers while the user speaks
+3. Returns the final text on `stopProcessSTT()`
+
+Interim hypotheses are opt-in (subscribe with `subscribeSttPartials`) because a
+hypothesis is not a settled transcript; existing result consumers must not
+receive one by surprise.
 
 **Throws:**
-- `STTError` `code: 'mode_unsupported'` on a `STREAMING` session — use `startRealtimeSTT()` instead
 - `Error` if already recording
 - `Error` if microphone access is denied
+- `Error` if the session uses end-of-turn detection and no utterance subscriber is
+  registered — see `subscribeSttUtterances()`
+- `STTError` on a streaming session when the connection cannot be opened
+  (`.code` carries the connection reason, an open string) or when the
+  server refuses to start the stream (e.g. `mode_unsupported`, `stream_busy`) or
+  does not acknowledge it within 15 s (`start_timeout`)
 
 **Browser Support:**
 - Chrome 66+
@@ -1682,21 +1645,29 @@ function stopProcessSTT(language?: string): Promise<string>;
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `language` | No | Language code for STT (e.g., 'ko', 'en'). Overrides the `language` given to `startProcessSTT()`; omit to use that default |
+| `language` | No | Language code for STT (e.g., 'ko', 'en'). Ignored on a streaming session — pass it to `startProcessSTT()` instead |
 
-Stops recording and resolves with the transcript. The recorded audio is sent for
-transcription over the session WebSocket.
+Stops recording and resolves with the transcript. On a `NON_STREAMING` session
+the recorded audio is sent for transcription; on a `STREAMING` session the stream
+is finalized and the server's final result is returned.
 
 **Returns:** Promise resolving to the transcribed text (string)
 
+With end-of-turn detection the individual utterances were already delivered to
+the utterance subscribers as they were committed, and this value is their
+concatenation — a summary of the recording, not the primary channel.
+
 **Throws:**
-- `STTError` if the transcription request fails
+- `STTError` if the request fails, including a streaming failure such as
+  `provider_closed` or the connection dropping mid-stream
 - `Error("STT recording is not in progress")` if the recorder exists but is not recording
 - `Error("STT recording has not been started")` if `startProcessSTT()` was not called
 
 **Usage Example:**
 
 ```typescript
+// Interim text is opt-in and streaming-only; inert on a non-streaming session.
+session.subscribeSttPartials(({ text }) => showInterim(text));
 await session.startProcessSTT({ language: 'ko' });
 
 // ... user speaks ...
@@ -1726,123 +1697,12 @@ try {
 interface SttPartial {
   text: string;          // confirmed prefix + current interim hypothesis
   finalText: string;     // confirmed prefix only
-  utteranceSeq?: number; // utterance this hypothesis belongs to
+  utteranceSeq?: number; // present only with end-of-turn detection
 }
 ```
 
 Render `text` as provisional UI and treat `finalText` as settled. In
 end-of-turn detection mode both reset at every utterance boundary.
-
-#### `SttUtterance`
-
-```typescript
-interface SttUtterance {
-  seq: number;            // monotonically increasing utterance index
-  text: string;           // raw transcript of this utterance
-  normalizedText: string; // normalized form (numbers, units, etc. written out)
-  language: string;       // language the server identified, e.g. 'ko'; '' when unknown
-}
-```
-
-Committed by end-of-turn detection or by `stop()`. `normalizedText` can differ from
-`text` when the STT provider post-processes the raw result (e.g. "twenty three" ->
-"23").
-
-### Realtime STT event stream
-
-```typescript
-function startRealtimeSTT(options?: { language?: string }): RealtimeSttStream;
-
-interface RealtimeSttStream extends AsyncIterable<RealtimeSttEvent> {
-  stop(): void;
-}
-
-type RealtimeSttEvent =
-  | { type: 'started' }
-  | ({ type: 'partial' } & SttPartial)
-  | ({ type: 'utterance' } & SttUtterance)
-  | { type: 'finished'; utteranceCount: number };
-```
-
-Starts one realtime STT cycle on a `STREAMING` session and returns it as an event
-stream. It is the only way to transcribe on a `STREAMING` session
-(`startProcessSTT()` serves `NON_STREAMING` only): every result of the cycle arrives
-in one `for await` loop, in the order the server produced it — `started`, any number of `partial` and `utterance`,
-then one `finished`, after which the loop ends.
-
-**One start-stop pair is one cycle.** With or without end-of-turn detection, only
-`stop()` ends the cycle, and it does so immediately: the microphone is released at
-once, any unconfirmed speech arrives as one last `utterance`, then `finished`.
-End-of-turn detection only changes *when* utterances arrive — several inside the
-cycle at each detected boundary, instead of one after `stop()`. Called before the
-microphone opens, `stop()` keeps it from opening at all and the loop yields only
-`finished` (`utteranceCount: 0`). Called while the stream is still connecting, the
-speech captured so far is not dropped: it is sent once the stream opens, and the
-cycle then stops as usual. Breaking out of the loop is the same
-as `stop()`, with the remaining events discarded. `stop()` is idempotent; there is
-no separate cancel.
-
-**Failures are thrown from the loop** as `STTError` (server `realtime_stt.error`,
-a dropped socket, `stopSession()`), or as the browser's error when the microphone
-is denied. A session whose STT type is not `STREAMING` throws `STTError`
-`code: 'mode_unsupported'` before the microphone opens — there is no fallback to
-recording.
-
-**Isolated from the rest of the session.** The cycle does not feed
-`setSttResultCallback()` or the error handler, and needs no prior setup.
-`clearBuffer()` leaves it running, so a barge-in stops the avatar without ending
-the listening cycle. It does take the session's single STT slot: `startRealtimeSTT()`
-throws synchronously and `startProcessSTT()` rejects while a cycle is open, and the
-slot is held until `finished` (the server allows one stream per connection).
-`isSTTRecording()` returns `true` for that span, and the `RECORDING` chat state is
-on while the cycle is open. Under end-of-turn detection, an utterance that echoes
-what the avatar just spoke is dropped before it reaches the `for await` loop.
-
-**Time limits are the app's call.** There is no `timeout` option. The server bounds
-every stream on its own: past 600 s (3600 s under end-of-turn detection) it ends with
-`STTError` `code: 'stream_max_duration'`, and after 30 s with neither audio nor
-`stop()` with `code: 'stream_idle_timeout'` (an open microphone keeps sending audio,
-so in practice this means the audio stopped flowing). Both are thrown from the loop
-and release the microphone. For a shorter, app-defined limit, call `stop()` yourself:
-
-```typescript
-const stt = session.startRealtimeSTT({ language: 'ko' });
-AbortSignal.timeout(15_000).addEventListener('abort', () => stt.stop(), { once: true });
-```
-
-```typescript
-// Push-to-talk: one cycle per press
-const stt = session.startRealtimeSTT({ language: 'ko' });
-talkButton.onpointerup = () => stt.stop();
-
-let finalText = '';
-try {
-  for await (const event of stt) {
-    if (event.type === 'partial') caption.textContent = event.text;
-    if (event.type === 'utterance') finalText += event.text;
-  }
-} catch (error) {
-  console.error('STT failed', error);
-}
-// Past the loop: `finished` arrived and the cycle is over.
-```
-
-```typescript
-// End-of-turn detection: one cycle for the whole conversation
-const stt = session.startRealtimeSTT({ language: 'ko' });
-endButton.onclick = () => stt.stop();
-
-for await (const event of stt) {
-  if (event.type === 'partial' && avatarIsSpeaking) {
-    await session.clearBuffer(); // stops the avatar; the cycle keeps listening
-  }
-  if (event.type === 'utterance') {
-    for await (const chunk of session.processLLM({ message: event.text })) {
-      if (chunk.type === 'message' && chunk.finish) session.processTTSTF(chunk.message);
-    }
-  }
-}
-```
 
 ### Check STT recording status
 
@@ -1853,9 +1713,10 @@ function isSTTRecording(): boolean;
 **Returns:** `true` if STT recording is currently in progress or has audio pending from timeout, `false` otherwise
 
 This method returns `true` in the following cases:
-1. A `NON_STREAMING` recording is active (after `startProcessSTT()` and before `stopProcessSTT()`)
-2. A `STREAMING` cycle via `startRealtimeSTT()` is open (until its `finished`)
-3. On a `NON_STREAMING` session, recording was automatically stopped by `timeout` but `stopProcessSTT()` has not been called yet (the recorded audio is pending)
+1. Recording is actively in progress (after `startProcessSTT()` and before `stopProcessSTT()`) — both STT modes
+2. On a `NON_STREAMING` session, recording was automatically stopped by `timeout` but `stopProcessSTT()` has not been called yet (the recorded audio is pending)
+
+On a `STREAMING` session a `timeout` auto-stop finalizes the stream and parks the transcript for the next `stopProcessSTT()`, which still returns it — but `isSTTRecording()` returns `false` in that window, because neither the microphone nor the stream is open anymore. Case 2 applies to `NON_STREAMING` sessions only.
 
 **Usage Example:**
 
@@ -2041,21 +1902,115 @@ function subscribeChatStates(
 
 Receive 'Chat states' changes during conversation.
 
+### Subscribe to STT partials
+
+```typescript
+function subscribeSttPartials(
+  callback: (partial: SttPartial) => void
+): () => void;
+
+interface SttPartial {
+  text: string; // confirmed prefix + current interim guess
+  finalText: string; // confirmed prefix only
+  utteranceSeq?: number; // present only under end-of-turn detection
+}
+```
+
+Subscribes to interim STT hypotheses on a streaming session, delivered as the user
+speaks. Multiple subscribers are supported; the returned function removes this one.
+
+**Returns:** Function to unsubscribe.
+
+A hypothesis is provisional — render `text` as in-progress and treat `finalText` as
+the confirmed prefix. It never fires on a `NON_STREAMING` session. Under end-of-turn
+detection each partial carries `utteranceSeq`, tying it to the utterance delivered by
+`subscribeSttUtterances()`.
+
+```typescript
+const off = session.subscribeSttPartials(({ text, finalText }) => showInterim(text, finalText));
+await session.startProcessSTT({ language: 'ko' });
+// ... later: off();
+```
+
+### Subscribe to STT utterances
+
+```typescript
+function subscribeSttUtterances(
+  callback: (utterance: SttUtterance) => void
+): () => void;
+
+interface SttUtterance {
+  seq: number;
+  text: string;
+  normalizedText: string; // spoken numbers/units as written, e.g. "23"
+  locale: string; // detected language, e.g. 'ko-KR'
+}
+```
+
+Subscribes to committed STT utterances under end-of-turn detection, each delivered
+once as a whole `SttUtterance`. Multiple subscribers are supported; the returned
+function removes this one. It fires only under end-of-turn detection — on a
+non-end-of-turn streaming session there is a single utterance whose transcript comes
+from `stopProcessSTT()`.
+
+**Returns:** Function to unsubscribe.
+
+**Required for end-of-turn detection.** When the session's STT type detects
+utterance boundaries, the microphone stays open and each utterance is committed by
+the server as the conversation goes — there is no return value for them to travel
+on. `startProcessSTT()` therefore rejects if no subscriber (or a deprecated
+`setSttResultCallback()` handler) is registered, rather than dropping utterances
+silently. Register before starting; registering afterwards races the first
+utterance.
+
+The SDK does **not** feed these results into the LLM for you. Drive the pipeline
+explicitly with `processLLM()` → `processTTSTF()`.
+
+```typescript
+session.subscribeSttUtterances(async (utterance) => {
+  console.log(`utterance ${utterance.seq} [${utterance.locale}]:`, utterance.text);
+
+  for await (const chunk of session.processLLM({
+    message: utterance.normalizedText || utterance.text
+  })) {
+    if (chunk.type === 'message' && chunk.finish) {
+      session.processTTSTF(chunk.message);
+    }
+  }
+});
+
+await session.startProcessSTT(); // mic stays open for the whole conversation
+```
+
+**Echo handling.** With an always-open microphone the avatar's own voice can be
+picked up and transcribed as user speech, which would then be answered and spoken
+again. The SDK guards against this on two levels: it requests echo cancellation
+from the browser, and it discards a committed utterance that closely matches what
+the avatar just spoke. Utterances discarded this way never reach a subscriber.
+
 ### Set STT result callback (deprecated)
 
 ```typescript
-function setSttResultCallback(callback: (text: string) => void): () => void;
+function setSttResultCallback(
+  callback: (text: string, meta?: SttResultMeta) => void
+): () => void;
+
+/** An SttUtterance minus the `text` that travels as the first argument. */
+type SttResultMeta = Omit<SttUtterance, 'text'>;
+// { seq: number; normalizedText: string; locale: string }
 ```
 
-**Deprecated.** Serves only the legacy DataChannel voice-chat path
-([`startVoiceChat()`](#startvoicechat-deprecated)). Take the transcript from
-[`stopProcessSTT()`](#stop-stt-recording-and-transcribe)'s return value on a
-`NON_STREAMING` session, or iterate [`startRealtimeSTT()`](#realtime-stt-event-stream)
-on a `STREAMING` session.
+**Deprecated — prefer [`subscribeSttUtterances`](#subscribe-to-stt-utterances)**,
+which delivers each committed utterance as a whole `SttUtterance` and supports
+multiple subscribers. This method is retained for the classic DataChannel voice-chat
+path and for backward compatibility: either a `subscribeSttUtterances` subscriber or
+a `setSttResultCallback` handler satisfies the end-of-turn start requirement, and
+both receive each committed utterance.
 
-The callback receives the text of each committed utterance from the legacy path
-only. It does not fire from `startProcessSTT()` / `stopProcessSTT()` or from a
-`startRealtimeSTT()` cycle.
+`meta` is present when the result is a server-committed utterance from a streaming
+session, and absent on the legacy voice-chat path. Existing single-argument handlers
+keep working unchanged. `SttResultMeta` is exported so a handler declared apart from
+the call site can be typed without restating the shape.
 
 ### Set error handler
 
@@ -2075,10 +2030,11 @@ The handler receives:
 |-------|-----------|
 | `LLMError` | The deprecated `processChat()` pipeline — the `/llm/v2/` request or its SSE stream failed |
 | `TTSError` | `processTTS()` (the call then resolves `undefined`); `processStreamingTTS()` — a streaming connection that will not open (resolves `undefined`) and every mid-stream failure, which is also thrown from the iteration |
+| `STTError` | Streaming STT — a failure that ends the stream while no `startProcessSTT()`/`stopProcessSTT()` call is pending (a pending call rejects instead), or a failure while a `timeout` auto-stop finalizes the stream |
 | `STFError` | `code: 'server_rejected'` — the server refused an STF turn (`processSTF()` still resolves); `code: 'channel_closed'` — `processTTSTF()` (or the deprecated chat methods that speak through it) could not send its request |
 | `ApiError` / `Error` | The heartbeat of a non-WebRTC session failed; the session is closed afterwards |
 
-Errors that reject a call — `stopProcessSTT()`, `transcribeAudio()`, `processSTF()` (other than the two codes above), `TTSNotStreamableError` — are not duplicated into the handler. STT failures never reach it: `stopProcessSTT()` rejects, and a `startRealtimeSTT()` cycle throws from its `for await` loop. `processLLM()` never uses it: its failures are yielded as `error` chunks.
+Errors that reject a call — `stopProcessSTT()`, `transcribeAudio()`, `processSTF()` (other than the two codes above), `TTSNotStreamableError` — are not duplicated into the handler. `processLLM()` never uses it: its failures are yielded as `error` chunks.
 
 ### Log session event
 
@@ -2436,20 +2392,17 @@ Match `code` against the exported `STT_ERROR_CODE` table:
 
 | Member | Value | Raised by | Meaning |
 |--------|-------|-----------|---------|
-| `CANCELLED` | `cancelled` | server | The stream was cancelled server-side. A client-requested stop, **not a failure** |
-| `CHUNK_TOO_LARGE` | `chunk_too_large` | SDK | A base64 payload exceeded the server cap. On a stream, one chunk did — the SDK's own chunk is ~1/120th of the cap, so this signals a capture configuration the stream was not opened for — and it is thrown from the `startRealtimeSTT()` loop. On a whole-utterance request the entire clip exceeded 5 MiB, and it **rejects** `stopProcessSTT()` / `transcribeAudio*()` before anything is sent |
+| `CANCELLED` | `cancelled` | SDK / server | The stream was aborted by `clearBuffer()`. A client-requested stop, **not a failure** |
+| `CHUNK_TOO_LARGE` | `chunk_too_large` | SDK | A base64 payload exceeded the server cap. On a stream, one chunk did — the SDK's own chunk is ~1/120th of the cap, so this signals a capture configuration the stream was not opened for — and it is reported through `onError` / the pending promise. On a whole-utterance request the entire clip exceeded 5 MiB, and it **rejects** `stopProcessSTT()` / `transcribeAudio*()` before anything is sent |
 | `TERMINAL_TIMEOUT` | `terminal_timeout` | SDK | No result arrived within 30s of stopping the stream (stream) or of the request (whole utterance) |
-| `START_TIMEOUT` | `start_timeout` | SDK | The server did not acknowledge the stream start within 15 s; the `startRealtimeSTT()` loop throws, the microphone is released, and a cancel is sent so a late acceptance cannot leave the stream running server-side |
-| `MODE_UNSUPPORTED` | `mode_unsupported` | SDK / server | `startProcessSTT()` on a `STREAMING` session and `startRealtimeSTT()` on a `NON_STREAMING` session raise this before the mic opens; the server also sends it when the provider cannot stream |
+| `START_TIMEOUT` | `start_timeout` | SDK | The server did not acknowledge the stream start within 15 s; `startProcessSTT()` rejects, the microphone is released, and a cancel is sent so a late acceptance cannot leave the stream running server-side |
+| `MODE_UNSUPPORTED` | `mode_unsupported` | server | The session's STT type does not allow this transport |
 | `STREAM_BUSY` | `stream_busy` | server | The connection already has an active stream |
 | `STREAM_STATE` | `stream_state` | server / SDK | A frame for an unknown or already-finished stream |
 | `STREAM_IDLE_TIMEOUT` | `stream_idle_timeout` | server | No chunk or stop for 30s |
 | `STREAM_MAX_DURATION` | `stream_max_duration` | server | Past 600s, or 3600s with end-of-turn detection |
 | `PROVIDER_CLOSED` | `provider_closed` | server | The recognition provider dropped the stream |
-| `STT_BUSY` | `stt_busy` | server | A whole-utterance request found the per-connection in-flight STT cap (3) full |
-| `REALTIME_STT_BUSY` | `realtime_stt_busy` | server | Starting a stream found that same shared STT cap full |
-| `BAD_REQUEST` | `bad_request` | server | The request failed server-side validation; the message names the field |
-| `API_ERROR` | `stt_api_error` | server | Any other server-side STT failure |
+| `STT_BUSY` | `stt_busy` | server | Past the per-connection in-flight STT cap (3) |
 | `RATE_LIMITED` | `ws_rate_limited` | server | Too many frames on the connection |
 
 A transport fault that aborts a stream forwards its reason into `code` unchanged.
@@ -2466,49 +2419,16 @@ Match against the values you handle and fall through on the rest.
 ```typescript
 import { STTError, STT_ERROR_CODE } from 'perso-interactive-sdk-web/client';
 
-// NON_STREAMING: catch around startProcessSTT/stopProcessSTT
 try {
-  await session.startProcessSTT({ language: 'ko' });
-  const text = await session.stopProcessSTT();
-  console.log('Transcript:', text);
+  const text = await session.stopProcessSTT('ko');
 } catch (error) {
   if (error instanceof STTError) {
-    console.error('STT failed:', error.code, error.message);
+    // A barge-in cancelled the stream; there is nothing to report.
+    if (error.code === STT_ERROR_CODE.CANCELLED) return;
+    console.error('STT API Error:', error.underlyingError.detail);
+    console.error('Error Code:', error.code);
   } else {
-    // Microphone access denied (browser NotAllowedError) or other setup error
-    console.error('Recording error:', error instanceof Error ? error.message : error);
-  }
-}
-
-// STREAMING: catch around the for-await loop
-const stt = session.startRealtimeSTT({ language: 'ko' });
-try {
-  for await (const event of stt) {
-    if (event.type === 'utterance') console.log('Utterance:', event.text);
-    if (event.type === 'finished') console.log('Done, utterances:', event.utteranceCount);
-  }
-} catch (error) {
-  if (error instanceof STTError) {
-    switch (error.code) {
-      case STT_ERROR_CODE.REALTIME_STT_BUSY:
-        // Another stream is already running; wait and retry.
-        console.warn('STT busy; retry shortly.');
-        break;
-      case STT_ERROR_CODE.STREAM_MAX_DURATION:
-        // Server ended the stream (600 s, or 3600 s with end-of-turn detection).
-        // Start a new cycle if the user is still speaking.
-        console.warn('Stream duration limit reached.');
-        break;
-      case STT_ERROR_CODE.MODE_UNSUPPORTED:
-        // This session's STT type is not STREAMING.
-        console.error('Use startProcessSTT() for this session.');
-        break;
-      default:
-        console.error('STT error:', error.code, error.message);
-    }
-  } else {
-    // Microphone access denied or other non-protocol error.
-    console.error('Non-STT error:', error instanceof Error ? error.message : error);
+    console.error('Recording Error:', error.message);
   }
 }
 ```

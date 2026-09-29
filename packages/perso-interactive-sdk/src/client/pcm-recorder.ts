@@ -4,13 +4,13 @@
  * 16 kHz mono is what the recognizer wants, and asking the `AudioContext` for
  * it lets the browser's own resampler handle the mic's native rate. The
  * alternative — capturing at the device rate and resampling in JS — means
- * shipping a realtime resampler; since `stt.start` declares `sample_rate` on
+ * shipping a realtime resampler; since `realtime_stt.start` declares `sample_rate` on
  * the wire, honestly reporting whatever rate the browser granted is both
  * cheaper and more accurate. See {@link PcmStreamRecorder.sampleRate}.
  */
 export const TARGET_SAMPLE_RATE = 16000;
 
-/** Default slice of audio carried by one `stt.audio_chunk`, in milliseconds. */
+/** Default slice of audio carried by one `realtime_stt.audio_chunk`, in milliseconds. */
 const DEFAULT_CHUNK_MS = 100;
 
 /**
@@ -56,7 +56,7 @@ export interface PcmStreamRecorderOptions {
 
 /**
  * Captures the microphone as a continuous stream of fixed-size PCM chunks,
- * for feeding `stt.audio_chunk` while the user is still speaking.
+ * for feeding `realtime_stt.audio_chunk` while the user is still speaking.
  *
  * Distinct from {@link WavRecorder}, which buffers the whole utterance and
  * resamples once at `stop()` — correct for a one-shot `stt.request`, but
@@ -77,7 +77,7 @@ export class PcmStreamRecorder {
 	private muted = false;
 
 	/**
-	 * Rate the browser actually granted, which is what `stt.start` must
+	 * Rate the browser actually granted, which is what `realtime_stt.start` must
 	 * declare. Equals {@link TARGET_SAMPLE_RATE} wherever the sample-rate hint
 	 * is honoured; on browsers that ignore it (older Safari) this is the
 	 * device rate and the audio is streamed at that rate rather than resampled.
