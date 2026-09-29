@@ -57,9 +57,9 @@ type FrameHandler = (frame: WsEnvelope) => void;
  * per utterance.
  *
  * Dispatch is keyed by frame type. Consumers exist for `session.*` (handled
- * here), `stt.*` (`stt-ws.ts`, `stt-stream.ts`), `llm.*` (`llm-ws.ts`) and
- * `tts.*` (`tts-ws.ts`); each of those drivers also issues the shared
- * `cancel.request`. A new namespace means registering handlers, not reworking
+ * here), `stt.*` (`stt-ws.ts`), `realtime_stt.*` (`stt-stream.ts`), `llm.*`
+ * (`llm-ws.ts`) and `tts.*` (`tts-ws.ts`); each of those drivers also issues
+ * the shared `cancel.request`. A new namespace means registering handlers, not reworking
  * the transport.
  */
 export class SessionSocket {

@@ -1,9 +1,9 @@
 import { STTError, sttStreamError } from '../shared/error';
 import { encodePcmChunk } from '../shared/pcm-encode';
 import {
+	type RealtimeSttFinishedPayload,
 	type SttErrorPayload,
 	type SttPartialPayload,
-	type SttResultPayload,
 	type SttUtterancePayload,
 	MAX_STT_CHUNK_B64_CHARS,
 	STT_ERROR_CODE,
@@ -13,7 +13,7 @@ import {
 import type { SessionSocket } from './session-socket';
 
 /**
- * How long to wait for the terminal frame after `stt.stop`.
+ * How long to wait for the terminal frame after `realtime_stt.stop`.
  *
  * Without a bound, a server that never finalizes would leave
  * `stopProcessSTT()` pending forever. Generous enough to cover provider
@@ -22,7 +22,7 @@ import type { SessionSocket } from './session-socket';
 const DEFAULT_TERMINAL_TIMEOUT_MS = 30000;
 
 /**
- * How long to wait for `stt.started` after `stt.start`.
+ * How long to wait for `realtime_stt.started` after `realtime_stt.start`.
  *
  * The microphone is already capturing while this wait runs, so a server that
  * accepts the socket but never acknowledges the stream must not leave
@@ -36,7 +36,7 @@ export interface SttPartial {
 	text: string;
 	/** Confirmed prefix only — safe to treat as settled. */
 	finalText: string;
-	/** Which utterance this belongs to. Present only with end-of-turn detection. */
+	/** Which utterance this belongs to. */
 	utteranceSeq?: number;
 }
 
@@ -45,38 +45,30 @@ export interface SttUtterance {
 	seq: number;
 	text: string;
 	normalizedText: string;
-	locale: string;
+	/** Language the server identified for this utterance, e.g. `ko`; `""` when unknown. */
+	language: string;
 }
-
-/**
- * The metadata half of a committed utterance, as delivered to
- * `setSttResultCallback`'s second argument — the transcript itself travels as the
- * first. Derived from {@link SttUtterance} so the split is visible in the type
- * rather than restated as a second literal that can drift.
- */
-export type SttResultMeta = Omit<SttUtterance, 'text'>;
 
 /** Terminal outcome of a stream. */
 export interface SttStreamResult {
 	text: string;
 	normalizedText: string;
-	locale: string;
-	/** Number of utterances committed, in end-of-turn detection mode. */
-	utteranceCount?: number;
+	/** Language of the last committed utterance; `""` for a silent stream. */
+	language: string;
+	/** Number of utterances the server committed; 0 for a silent stream. */
+	utteranceCount: number;
 }
 
 export interface SttStreamOptions {
 	socket: SessionSocket;
-	/** Rate the recorder is actually capturing at; declared on `stt.start`. */
+	/** Rate the recorder is actually capturing at; declared on `realtime_stt.start`. */
 	sampleRate: number;
-	/** Whether the session's STT type commits utterances server-side. */
-	endOfTurnDetection: boolean;
 	language?: string;
 	onPartial?: (partial: SttPartial) => void;
 	onUtterance?: (utterance: SttUtterance) => void;
 	onError?: (error: STTError) => void;
 	terminalTimeoutMs?: number;
-	/** Bound on the `stt.started` acknowledgement; defaults to 15 s. */
+	/** Bound on the `realtime_stt.started` acknowledgement; defaults to 15 s. */
 	startTimeoutMs?: number;
 }
 
@@ -91,7 +83,8 @@ type StopSettle = {
 };
 
 /**
- * Drives one `stt.start` → `stt.audio_chunk`* → `stt.stop` exchange.
+ * Drives one `realtime_stt.start` → `realtime_stt.audio_chunk`* →
+ * `realtime_stt.stop` exchange.
  *
  * The server permits a single active stream per connection, so the session
  * holds at most one of these at a time. All frames of the exchange share the
@@ -103,7 +96,6 @@ export class SttStream {
 
 	private readonly socket: SessionSocket;
 	private readonly sampleRate: number;
-	private readonly endOfTurnDetection: boolean;
 	private readonly language?: string;
 	private readonly onPartial?: (partial: SttPartial) => void;
 	private readonly onUtterance?: (utterance: SttUtterance) => void;
@@ -112,8 +104,11 @@ export class SttStream {
 	private readonly startTimeoutMs: number;
 
 	private readonly unsubscribes: Array<() => void> = [];
-	/** Utterance texts seen so far; the EOT terminal frame carries no text. */
-	private readonly committed: string[] = [];
+	/**
+	 * Utterances seen so far. The terminal `realtime_stt.finished` carries no
+	 * text in either mode, so the transcript is reassembled from these.
+	 */
+	private readonly committed: SttUtterance[] = [];
 
 	private finished = false;
 	private cancelled = false;
@@ -125,7 +120,6 @@ export class SttStream {
 	constructor(options: SttStreamOptions) {
 		this.socket = options.socket;
 		this.sampleRate = options.sampleRate;
-		this.endOfTurnDetection = options.endOfTurnDetection;
 		this.language = options.language;
 		this.onPartial = options.onPartial;
 		this.onUtterance = options.onUtterance;
@@ -140,7 +134,10 @@ export class SttStream {
 		return !this.finished;
 	}
 
-	/** Sends `stt.start` and resolves once the server acknowledges with `stt.started`. */
+	/**
+	 * Sends `realtime_stt.start` and resolves once the server acknowledges with
+	 * `realtime_stt.started`.
+	 */
 	open(): Promise<void> {
 		return new Promise<void>((resolve, reject) => {
 			this.subscribe();
@@ -148,7 +145,7 @@ export class SttStream {
 			this.opening = { resolve, reject };
 
 			try {
-				this.socket.send(WS_TYPE.STT_START, this.id, {
+				this.socket.send(WS_TYPE.REALTIME_STT_START, this.id, {
 					...(this.language && { language: this.language }),
 					audio_format: 'pcm_s16le',
 					sample_rate: this.sampleRate,
@@ -160,16 +157,18 @@ export class SttStream {
 				return;
 			}
 
-			// Armed only once stt.start is on the wire; the acknowledgement handler
-			// clears it, and fail() tears it down with everything else.
+			// Armed only once realtime_stt.start is on the wire; the acknowledgement
+			// handler clears it, and fail() tears it down with everything else.
 			this.startTimer = setTimeout(() => {
 				// The server may still accept the stream after we give up. Tell it to
 				// drop this id, or a late acceptance leaves a stream running that the
-				// SDK has discarded and the next stt.start is refused with stream_busy.
+				// SDK has discarded and the next realtime_stt.start is refused with stream_busy.
 				this.sendCancelFrame();
 				this.fail(
 					sttStreamError({
-						reason: `No stt.started within ${this.startTimeoutMs}ms of stt.start`,
+						reason:
+							`No realtime_stt.started within ${this.startTimeoutMs}ms ` +
+							'of realtime_stt.start',
 						code: STT_ERROR_CODE.START_TIMEOUT
 					})
 				);
@@ -211,13 +210,13 @@ export class SttStream {
 		}
 
 		try {
-			this.socket.send(WS_TYPE.STT_AUDIO_CHUNK, this.id, { audio_b64 });
+			this.socket.send(WS_TYPE.REALTIME_STT_AUDIO_CHUNK, this.id, { audio_b64 });
 		} catch (error) {
 			this.fail(toSttError(error));
 		}
 	}
 
-	/** Sends `stt.stop` and resolves with the terminal result. */
+	/** Sends `realtime_stt.stop` and resolves with the terminal result. */
 	stop(): Promise<SttStreamResult> {
 		return new Promise<SttStreamResult>((resolve, reject) => {
 			if (this.finished) {
@@ -234,14 +233,14 @@ export class SttStream {
 			this.terminalTimer = setTimeout(() => {
 				this.fail(
 					sttStreamError({
-						reason: `No terminal frame within ${this.terminalTimeoutMs}ms of stt.stop`,
+						reason: `No terminal frame within ${this.terminalTimeoutMs}ms of realtime_stt.stop`,
 						code: STT_ERROR_CODE.TERMINAL_TIMEOUT
 					})
 				);
 			}, this.terminalTimeoutMs);
 
 			try {
-				this.socket.send(WS_TYPE.STT_STOP, this.id, {});
+				this.socket.send(WS_TYPE.REALTIME_STT_STOP, this.id, {});
 			} catch (error) {
 				this.fail(toSttError(error));
 			}
@@ -251,9 +250,9 @@ export class SttStream {
 	/**
 	 * Aborts the stream without waiting for a transcript.
 	 *
-	 * The server answers with an `stt.error` carrying `code: 'cancelled'`; that
-	 * is a client-requested stop rather than a failure, so it is not reported
-	 * through `onError`.
+	 * The server answers with a `realtime_stt.error` carrying `code: 'cancelled'`;
+	 * that is a client-requested stop rather than a failure, so it is not
+	 * reported through `onError`.
 	 */
 	cancel(): void {
 		if (this.finished) return;
@@ -281,7 +280,7 @@ export class SttStream {
 
 		this.unsubscribes.push(
 			this.socket.on(
-				WS_TYPE.STT_STARTED,
+				WS_TYPE.REALTIME_STT_STARTED,
 				forStream(() => {
 					this.clearStartTimer();
 					this.opening?.resolve();
@@ -289,35 +288,38 @@ export class SttStream {
 				})
 			),
 			this.socket.on(
-				WS_TYPE.STT_PARTIAL,
+				WS_TYPE.REALTIME_STT_PARTIAL,
 				forStream((frame) => {
 					const payload = frame.payload as unknown as SttPartialPayload;
 					this.onPartial?.({
 						text: payload.text ?? '',
-						finalText: payload.final_text ?? '',
+						finalText: payload.finalized_text ?? '',
 						...(payload.utterance_seq !== undefined && { utteranceSeq: payload.utterance_seq })
 					});
 				})
 			),
 			this.socket.on(
-				WS_TYPE.STT_UTTERANCE,
+				WS_TYPE.REALTIME_STT_UTTERANCE,
 				forStream((frame) => {
 					const payload = frame.payload as unknown as SttUtterancePayload;
-					if (payload.text) this.committed.push(payload.text);
-					this.onUtterance?.({
+					const utterance: SttUtterance = {
 						seq: payload.seq,
-						text: payload.text,
-						normalizedText: payload.normalized_text,
-						locale: payload.locale
-					});
+						text: payload.text ?? '',
+						normalizedText: payload.normalized_text ?? '',
+						language: payload.language ?? ''
+					};
+					this.committed.push(utterance);
+					this.onUtterance?.(utterance);
 				})
 			),
 			this.socket.on(
-				WS_TYPE.STT_RESULT,
-				forStream((frame) => this.succeed(frame.payload as unknown as SttResultPayload))
+				WS_TYPE.REALTIME_STT_FINISHED,
+				forStream((frame) =>
+					this.succeed(frame.payload as unknown as RealtimeSttFinishedPayload)
+				)
 			),
 			this.socket.on(
-				WS_TYPE.STT_ERROR,
+				WS_TYPE.REALTIME_STT_ERROR,
 				forStream((frame) => this.handleErrorFrame(frame.payload as unknown as SttErrorPayload))
 			),
 			this.socket.onClosed((info) => {
@@ -330,8 +332,8 @@ export class SttStream {
 			}),
 			this.socket.onError((payload) => {
 				// A top-level protocol error (e.g. unknown_type from a server that does
-				// not know stt.start) carries no stream id, so the id-keyed handlers
-				// never see it; fail fast instead of waiting out a timeout with the
+				// not know realtime_stt.start) carries no stream id, so the id-keyed
+				// handlers never see it; fail fast instead of waiting out a timeout with the
 				// microphone open.
 				this.fail(
 					sttStreamError({
@@ -368,19 +370,15 @@ export class SttStream {
 		this.fail(sttStreamError(payload));
 	}
 
-	private succeed(payload: SttResultPayload): void {
+	private succeed(payload: RealtimeSttFinishedPayload): void {
 		if (this.finished) return;
 
-		// In end-of-turn detection mode the terminal frame's text is empty by
-		// design — every utterance was already delivered — so the transcript is
-		// reassembled from what was committed during the stream.
-		const text = this.endOfTurnDetection ? this.committed.join(' ') : (payload.text ?? '');
-
+		const spoken = this.committed.filter((utterance) => utterance.text !== '');
 		const result: SttStreamResult = {
-			text,
-			normalizedText: this.endOfTurnDetection ? text : (payload.normalized_text ?? ''),
-			locale: payload.locale ?? '',
-			utteranceCount: payload.utterance_count
+			text: spoken.map((utterance) => utterance.text).join(' '),
+			normalizedText: spoken.map((utterance) => utterance.normalizedText).join(' '),
+			language: spoken[spoken.length - 1]?.language ?? '',
+			utteranceCount: payload.utterance_count ?? this.committed.length
 		};
 
 		const stopping = this.stopping;

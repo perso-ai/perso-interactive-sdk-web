@@ -72,9 +72,9 @@ export class STTError extends Error {
 	/**
 	 * Protocol/API error code, forwarded from the underlying error.
 	 *
-	 * For streaming STT this is the `stt.error` payload's `code` — an open
-	 * string, since the server relays the provider's own codes verbatim. Match
-	 * against `STT_ERROR_CODE` members rather than assuming the set is closed.
+	 * For streaming STT this is the `realtime_stt.error` (or batch `stt.error`)
+	 * payload's `code` — an open string, since the server relays the provider's
+	 * own codes verbatim. Match against `STT_ERROR_CODE` members rather than assuming the set is closed.
 	 * A transport fault that aborts the stream forwards its connection reason
 	 * here unchanged (an open string such as `ws_closed`; log the rest).
 	 */
@@ -84,7 +84,7 @@ export class STTError extends Error {
 }
 
 /**
- * Wraps a streaming `stt.error` payload as an {@link ApiError} so it can be
+ * Wraps an `stt.error` or `realtime_stt.error` payload as an {@link ApiError} so it can be
  * carried by {@link STTError} alongside REST failures.
  *
  * Keeping one error type for both transports means consumers do not have to

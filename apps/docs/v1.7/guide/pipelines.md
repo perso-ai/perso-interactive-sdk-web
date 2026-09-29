@@ -1,9 +1,17 @@
+---
+search: false
+---
+
+::: warning Archived version
+You're viewing **v1.7**. The latest version is **[here](/guide/getting-started.md)**.
+:::
+
 # Pipeline Recipes
 
 Task-oriented recipes that compose `Session` methods into complete flows. Each
 recipe is a copy-paste function with a "Best for" note. For an API-by-API
-orientation see [Getting Started](/guide/getting-started); for full signatures
-and return shapes see the [API Reference](/api/).
+orientation see [Getting Started](/v1.7/guide/getting-started); for full signatures
+and return shapes see the [API Reference](/v1.7/api/).
 
 All recipes assume a session created as in
 [Session lifecycle boilerplate](#session-lifecycle-boilerplate) below.
@@ -17,9 +25,10 @@ All recipes assume a session created as in
 | `session.processStreamingTTS(text)` | text → PCM chunk stream (streamable voices only) |
 | `session.processSTF(audio, format?, message?)` | audio → avatar lip-sync (`Promise<void>`) |
 | `session.processTTSTF(message)` | text → TTS + STF + history + chat log |
-| `session.startProcessSTT(options?)` | start microphone capture (`NON_STREAMING` only) |
-| `session.stopProcessSTT(language?)` | stop capture → transcribed text (`NON_STREAMING` only) |
-| `session.startRealtimeSTT(options?)` | start one `STREAMING` cycle; iterate with `for await` (`partial` / `utterance` / `finished`) |
+| `session.startProcessSTT(options?)` | start microphone capture |
+| `session.stopProcessSTT(language?)` | stop capture → transcribed text |
+| `session.subscribeSttPartials(cb)` | interim hypotheses on a streaming type (returns unsubscribe) |
+| `session.subscribeSttUtterances(cb)` | committed utterances in continuous (end-of-turn) STT mode |
 | `session.transcribeAudio(file, language?)` | audio file → text (no session mic) |
 | `session.subscribeChatStates(cb)` | observe `Set<ChatState>` changes |
 | `session.subscribeChatLog(cb)` | observe chat messages |
@@ -183,16 +192,15 @@ async function speakStreaming(session: Session, text: string) {
 Decode with a single `PcmStreamDecoder` across the stream — chunk boundaries split
 samples, so decoding a chunk alone turns speech into noise. Abandon a turn with
 `await stream.cancel()`. See
-[Streaming TTS (PCM)](/api/#streaming-tts-pcm) for the wire format and
-[Only a streamable voice may stream](/api/#only-a-streamable-voice-may-stream)
+[Streaming TTS (PCM)](/v1.7/api/#streaming-tts-pcm) for the wire format and
+[Only a streamable voice may stream](/v1.7/api/#only-a-streamable-voice-may-stream)
 for the gating rules.
 
 Best for: voice-only playback, or driving your own audio UI.
 
 ## Recipe 5: Voice chat, press-to-talk (STT → LLM → speech)
 
-For a `NON_STREAMING` session, record an utterance, transcribe it on stop, then
-reuse any text-chat recipe.
+Record an utterance, transcribe it on stop, then reuse any text-chat recipe.
 
 ```ts
 async function voiceChat(session: Session) {
@@ -205,50 +213,50 @@ async function voiceChat(session: Session) {
 }
 ```
 
-For a `STREAMING` session, use `startRealtimeSTT()` — the transcript and interim
-text arrive as events in a `for await` loop:
+Set the recognition language at `startProcessSTT({ language })`. On a **streaming**
+STT type `stopProcessSTT(language)` ignores its argument — the language is fixed at
+start — and only a non-streaming type reads it on stop, so declaring it at start is
+the one form that works for both.
+
+For interim results on a streaming STT type, subscribe with `subscribeSttPartials`:
 
 ```ts
-async function voiceChatStreaming(session: Session) {
-  const stt = session.startRealtimeSTT({ language: 'ko' });
-  button.onpointerup = () => stt.stop();
-  for await (const event of stt) {
-    if (event.type === 'partial') showInterim(event.text);
-    if (event.type === 'utterance') await textChatStreaming(session, event.text);
-  }
-}
+session.subscribeSttPartials(({ text, finalText }) => showInterim(text, finalText));
+await session.startProcessSTT({ language: 'ko' });
+const userText = await session.stopProcessSTT();
 ```
 
-See [STT interaction modes](/api/#stt-interaction-modes).
+The transport (recorded vs. streaming) is chosen from the session's STT
+type — you do not select it. See
+[STT interaction modes](/v1.7/api/#stt-interaction-modes).
 
 Best for: push-to-talk voice conversation.
 
 ## Recipe 6: Continuous voice (end-of-turn detection)
 
-When the STT type sets `end_of_turn_detection`, use `startRealtimeSTT()` — the
-microphone stays open and each committed utterance arrives as an `utterance` event.
-Stop the cycle explicitly with `stt.stop()`.
+When the STT type sets `end_of_turn_detection`, the provider detects utterance
+boundaries itself: the microphone stays open and each committed utterance arrives
+on a subscriber as a whole `SttUtterance`. Subscribe **before** starting — without
+a subscriber the call is rejected rather than dropping utterances.
 
 ```ts
-const stt = session.startRealtimeSTT({ language: 'ko' });
-endButton.onclick = () => stt.stop();
-for await (const event of stt) {
-  if (event.type === 'utterance') {
-    for await (const chunk of session.processLLM({ message: event.text })) {
-      if (chunk.type === 'message' && chunk.finish) session.processTTSTF(chunk.message);
-    }
+session.subscribeSttUtterances(async (utterance) => {
+  for await (const chunk of session.processLLM({ message: utterance.text })) {
+    if (chunk.type === 'message' && chunk.finish) session.processTTSTF(chunk.message);
   }
-}
+});
+
+await session.startProcessSTT(); // mic stays open; utterances arrive via the subscriber
 ```
 
 Branch your UI on `end_of_turn_detection` (a live mic indicator instead of a
 press-and-hold button), not on `mode`.
 
-If the loop `await`s `processLLM` inside the `utterance` handler (as shown in
-Recipe 6), turns are serial — the next utterance is not picked up until the previous
-one finishes. Two turns overlap only if the caller does not await `processLLM` before
-handling the next event. For a strict one-at-a-time flow when not awaiting, drop
-incoming utterances while a turn is in flight.
+The subscriber is not awaited between utterances, so if a new utterance is committed
+before the previous `processLLM` turn finishes, two turns run at once and their
+history can interleave. For a strict one-at-a-time flow, serialize the callback
+(chain a per-session promise) or drop incoming utterances while a turn is in
+flight.
 
 Best for: hands-free, always-listening conversation.
 
@@ -266,32 +274,19 @@ Best for: intro messages, announcements, scripted content.
 
 Transcribe speech without any avatar output.
 
-`NON_STREAMING` session:
-
 ```ts
 async function transcribe(session: Session, language?: string): Promise<string> {
   await session.startProcessSTT(language ? { language } : undefined);
   // ... user speaks ...
-  return session.stopProcessSTT();
+  return session.stopProcessSTT(language);
 }
 ```
 
-`STREAMING` session — collect `utterance` text from the loop:
-
-```ts
-async function transcribeStreaming(session: Session, language?: string): Promise<string> {
-  const stt = session.startRealtimeSTT(language ? { language } : {});
-  button.onpointerup = () => stt.stop();
-  let result = '';
-  for await (const event of stt) {
-    if (event.type === 'utterance') result += event.text;
-  }
-  return result;
-}
-```
+Passing `language` at both start and stop covers both STT modes: a streaming type
+reads it at start, a non-streaming type reads it on stop.
 
 To transcribe an existing audio file instead of the microphone, use
-`session.transcribeAudio(file, language?)` (NON_STREAMING sessions only).
+`session.transcribeAudio(file, language?)`.
 
 Best for: speech input for search, forms, or custom processing.
 
@@ -314,7 +309,7 @@ Best for: text-only chat, background AI queries.
 ## Recipe 10: LLM with tool-call observation
 
 Watch tool calls and results as the LLM streams. Client tools are registered on
-`createSession()` via `clientTools`; see [Client tools](/guide/getting-started#client-tools-—-chattool).
+`createSession()` via `clientTools`; see [Client tools](/v1.7/guide/getting-started#client-tools-—-chattool).
 
 ```ts
 async function llmWithTools(session: Session, message: string) {
@@ -428,20 +423,7 @@ catch the throwing calls (`processStreamingTTS`, `stopProcessSTT`) directly.
 | `STFError` | avatar lip-sync (STF) failed |
 | `ApiError` | a REST call returned a non-2xx response |
 
-See the [error hierarchy](/api/) in the API Reference for the full list.
-
-`startRealtimeSTT()` failures are thrown from the `for await` loop, not delivered to
-`setErrorHandler`. Wrap the loop — not the `startRealtimeSTT()` call — in a `try/catch`:
-
-```ts
-const stt = session.startRealtimeSTT({ language: 'ko' });
-try {
-  for await (const event of stt) { ... }
-} catch (error) {
-  if (error instanceof STTError) { /* handle */ }
-  else { /* microphone denied or other browser error */ }
-}
-```
+See the [error hierarchy](/v1.7/api/) in the API Reference for the full list.
 
 ## Legacy (deprecated)
 

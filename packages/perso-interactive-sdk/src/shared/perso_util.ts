@@ -410,7 +410,7 @@ export class PersoUtil {
 	 * @param language Optional language code (e.g., 'ko', 'en')
 	 * @returns STTResponse with only the transcribed text.
 	 *
-	 * The server returns additional fields (e.g., `locale`, `normalized_text`)
+	 * The server returns additional fields (e.g., `language`, `normalized_text`)
 	 * which are intentionally not exposed by the SDK.
 	 *
 	 * @deprecated The SDK now transcribes over the session WebSocket

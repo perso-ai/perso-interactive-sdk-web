@@ -1,6 +1,6 @@
 /**
  * Encoding for the wire formats that carry raw, headerless 16-bit linear PCM
- * as base64 text: the streaming STT WebSocket (`stt.audio_chunk`, `audio_b64`
+ * as base64 text: the streaming STT WebSocket (`realtime_stt.audio_chunk`, `audio_b64`
  * field) and the streaming STF frames (`stf-streaming-data`, `data` field).
  *
  * This is the counterpart of `pcm-stream.ts`, which decodes the streaming TTS
@@ -78,7 +78,7 @@ export function encodeBase64(bytes: Uint8Array): string {
 	return out;
 }
 
-/** Encodes Float32 samples as the `audio_b64` payload of one `stt.audio_chunk`. */
+/** Encodes Float32 samples as the `audio_b64` payload of one `realtime_stt.audio_chunk`. */
 export function encodePcmChunk(samples: Float32Array): string {
 	return encodeBase64(floatToInt16LE(samples));
 }

@@ -47,15 +47,15 @@ import {
 import { WavRecorder } from './wav-recorder';
 import { PcmStreamRecorder } from './pcm-recorder';
 import { SessionSocket } from './session-socket';
+import { SttStream, type SttStreamOptions, type SttStreamResult } from './stt-stream';
 import {
-	SttStream,
-	type SttPartial,
-	type SttResultMeta,
-	type SttUtterance
-} from './stt-stream';
+	RealtimeSttEventQueue,
+	type RealtimeSttOptions,
+	type RealtimeSttStream
+} from './realtime-stt';
 import { SttRequest } from './stt-ws';
 import { TtsRequest } from './tts-ws';
-import { TTS_ERROR_CODE } from '../shared/ws-protocol';
+import { SESSION_SOCKET_CODE, STT_ERROR_CODE, TTS_ERROR_CODE } from '../shared/ws-protocol';
 import {
 	Perso,
 	type ControlErrorMessage,
@@ -112,25 +112,29 @@ function asStreamingFormat(format: TTSOutputFormat): StreamingTTSOutputFormat | 
 
 export { type Chat, ChatState, ChatTool };
 
-const HEARTBEAT_INTERVAL_MS = 10000;
+const HEARTBEAT_INTERVAL_MS = 5000;
 
-/**
- * How the session's STT type wants audio delivered. Read from the session row,
- * never chosen by the caller: the server rejects the mismatching transport
- * outright, so this is a property of the session rather than of the call.
- */
-interface SttMode {
-	streaming: boolean;
-	endOfTurnDetection: boolean;
+/** A promise that rejects with the signal's reason once it aborts. */
+function rejectOnAbort(signal: AbortSignal): Promise<never> {
+	return new Promise<never>((_, reject) => {
+		if (signal.aborted) reject(signal.reason);
+		else signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+	});
 }
 
-const NON_STREAMING: SttMode = { streaming: false, endOfTurnDetection: false };
+/** A live mic feeding an open `realtime_stt.*` stream; see openMicSttStream. */
+type MicSttStream = {
+	stream: SttStream;
+	recorder: PcmStreamRecorder;
+	/** Sends the audio captured before the stream opened, then streams live. */
+	flushPending: () => void;
+};
 
 /** Options accepted by the object form of {@link Session.startProcessSTT}. */
 export interface StartProcessSTTOptions {
 	/** Milliseconds after which recording stops automatically. */
 	timeout?: number;
-	/** Language hint. Streaming declares it up front, at `stt.start`. */
+	/** Language hint, used by stopProcessSTT() when it is called without one. */
 	language?: string;
 }
 
@@ -162,8 +166,6 @@ export class Session {
 	private chatStatesHandler: EventTarget = new EventTarget();
 	private chatLogHandler: EventTarget = new EventTarget();
 	private sttEventHandler: EventTarget | null = null;
-	private sttPartialSubscribers = new Set<(partial: SttPartial) => void>();
-	private sttUtteranceSubscribers = new Set<(utterance: SttUtterance) => void>();
 
 	private errorHandler: EventTarget = new EventTarget();
 
@@ -199,16 +201,16 @@ export class Session {
 	private sttTimeoutAudioFile: File | null = null;
 
 	private socket: SessionSocket | null = null;
-	private sttStream: SttStream | null = null;
-	private sttStreamRecorder: PcmStreamRecorder | null = null;
-	/** Transcript from an auto-stop, awaiting the caller's stopProcessSTT(). */
-	private sttTimeoutTranscript: string | null = null;
+	/** A startProcessSTT() call is between its busy check and owning a recorder or stream. */
+	private sttStarting = false;
+	/** Ends the open startRealtimeSTT() cycle with an error; `null` when none is open. */
+	private realtimeSttAbort: ((error: STTError) => void) | null = null;
 	/** Read once per session; see {@link resolveSessionInfo}. */
 	private sessionInfoPromise: Promise<SessionInfo | null> | null = null;
 	/** Recently spoken assistant lines, newest last, for echo rejection. */
 	private spokenHistory: string[] = [];
-	/** Guards the one-time warning about an ignored `language` argument. */
-	private warnedIgnoredLanguage = false;
+	/** Language from startProcessSTT(), the default for the next stopProcessSTT(). */
+	private sttLanguage: string | undefined = undefined;
 
 	private heartbeatIntervalId: ReturnType<typeof setTimeout> | null = null;
 
@@ -462,15 +464,15 @@ export class Session {
 	 * Same as transcribeAudio but returns the full STTResponse object.
 	 *
 	 * The SDK currently exposes only `text`. Other server-side fields
-	 * (e.g., `locale`, `normalized_text`) are intentionally omitted.
+	 * (e.g., `language`, `normalized_text`) are intentionally omitted.
 	 */
 	async transcribeAudioDetailed(audio: Blob | File, language?: string): Promise<STTResponse> {
 		// A streaming STT type rejects a one-shot `stt.request` server-side. Since
 		// the mode is already known, say so here rather than round-tripping to
 		// an opaque `mode_unsupported`.
-		if ((await this.resolveSttMode()).streaming) {
+		if (await this.isStreamingSttType()) {
 			throw new Error(
-				"This session's STT type is streaming-only; use startProcessSTT()/stopProcessSTT() " +
+				"This session's STT type is streaming-only; use startRealtimeSTT() " +
 					'instead of transcribing a buffered file.'
 			);
 		}
@@ -1129,22 +1131,15 @@ export class Session {
 	}
 
 	/**
-	 * Resolves how this session's STT type wants audio delivered, once.
+	 * Whether the session's STT type streams, read from the session row.
 	 *
-	 * The mode lives on the session row, so the SDK reads it rather than asking
-	 * the caller. A lookup failure resolves to non-streaming instead of
-	 * rejecting: the classic whole-utterance path worked before this call
-	 * existed and must not gain a new way to fail. A session that really is
-	 * streaming then gets a clear `mode_unsupported` from the server.
+	 * A lookup failure counts as non-streaming instead of rejecting: the classic
+	 * whole-utterance path worked before this call existed and must not gain a
+	 * new way to fail. A session that really is streaming then gets a clear
+	 * `mode_unsupported` from the server.
 	 */
-	private async resolveSttMode(): Promise<SttMode> {
-		const info = await this.resolveSessionInfo();
-		if (!info) return NON_STREAMING;
-
-		return {
-			streaming: info.stt_type?.mode === 'STREAMING',
-			endOfTurnDetection: info.stt_type?.end_of_turn_detection === true
-		};
+	private async isStreamingSttType(): Promise<boolean> {
+		return (await this.resolveSessionInfo())?.stt_type?.mode === 'STREAMING';
 	}
 
 	/** The session's TTS type, or `null` when the row carries none or is unavailable. */
@@ -1193,15 +1188,15 @@ export class Session {
 	}
 
 	/**
-	 * Starts recording audio for STT processing.
+	 * Starts recording audio for STT processing on a `NON_STREAMING` session.
 	 *
-	 * Transport is chosen from the session's STT type, not by the caller:
-	 * non-streaming types record to WAV and send it as one `stt.request` frame
-	 * over the session WebSocket on stop, streaming types open an `stt.start`
-	 * stream on the same socket and send audio as it is captured. Both report
-	 * through the same `stopProcessSTT` return value.
+	 * The whole utterance is recorded to WAV and sent as one `stt.request` frame
+	 * over the session WebSocket by {@link stopProcessSTT}, which resolves with
+	 * the transcript. A `STREAMING` session is read through
+	 * {@link startRealtimeSTT} instead, and is rejected here.
 	 *
 	 * @param timeoutOrOptions Timeout in milliseconds, or an options object.
+	 * @throws STTError `code: 'mode_unsupported'` on a `STREAMING` session.
 	 * @throws Error if already recording or if microphone access is denied.
 	 */
 	startProcessSTT(timeout?: number): Promise<void>;
@@ -1210,49 +1205,180 @@ export class Session {
 		const options: StartProcessSTTOptions =
 			typeof timeoutOrOptions === 'number' ? { timeout: timeoutOrOptions } : (timeoutOrOptions ?? {});
 
-		if (this.sttRecorder?.isRecording() || this.sttStream?.active) {
+		if (this.isSttBusy()) {
 			throw new Error('STT recording is already in progress');
 		}
 
-		const mode = await this.resolveSttMode();
-		if (mode.streaming) {
-			return await this.startStreamingSTT(mode, options);
-		}
+		// Claimed before the first await so a concurrent start sees the slot taken.
+		this.sttStarting = true;
+		try {
+			if (await this.isStreamingSttType()) {
+				throw sttStreamError({
+					reason: "This session's STT type is STREAMING; use startRealtimeSTT() instead",
+					code: STT_ERROR_CODE.MODE_UNSUPPORTED
+				});
+			}
 
-		return await this.startRecordedSTT(options.timeout);
+			this.sttLanguage = options.language;
+			return await this.startRecordedSTT(options.timeout);
+		} finally {
+			this.sttStarting = false;
+		}
 	}
 
 	/**
-	 * Opens a streaming STT session: WebSocket, `stt.start`, then mic capture.
+	 * Starts one realtime STT cycle on a `STREAMING` session and returns it as
+	 * an event stream. ({@link startProcessSTT} serves `NON_STREAMING` only.)
 	 *
-	 * With end-of-turn detection the server commits utterances asynchronously,
-	 * so there is no return value to carry them. They go to the callback
-	 * registered via `setSttResultCallback`; starting without one would drop
-	 * every utterance silently, so it is rejected up front. Registering the
-	 * callback after start would race the first utterance.
+	 * Every result of the cycle arrives in one `for await` loop: `started`, `partial` hypotheses, committed `utterance`s
+	 * and a closing `finished`. With end-of-turn detection several utterances
+	 * arrive inside the cycle; without it, one arrives after `stop()`. Either
+	 * way only `stop()` (or breaking out of the loop) ends the cycle.
+	 *
+	 * The cycle is independent of the rest of the session: it does not feed
+	 * {@link setSttResultCallback} or the error handler, and {@link clearBuffer} leaves it running, so a barge-in stops the
+	 * avatar without ending the listening cycle. Failures, including a session
+	 * whose STT type is not streaming, are thrown from the loop.
+	 *
+	 * @example
+	 * ```ts
+	 * const stt = session.startRealtimeSTT({ language: 'ko' });
+	 * button.onpointerup = () => stt.stop();
+	 * for await (const event of stt) {
+	 *   if (event.type === 'partial') caption.textContent = event.text;
+	 *   if (event.type === 'utterance') await reply(event.text);
+	 * }
+	 * ```
+	 *
+	 * @throws Error synchronously if an STT recording or cycle is already open.
 	 */
-	private async startStreamingSTT(
-		mode: SttMode,
-		options: StartProcessSTTOptions
-	): Promise<void> {
-		if (
-			mode.endOfTurnDetection &&
-			this.sttUtteranceSubscribers.size === 0 &&
-			this.sttEventHandler === null
-		) {
-			throw new Error(
-				'End-of-turn streaming STT delivers utterances asynchronously; ' +
-					'call subscribeSttUtterances() before startProcessSTT()'
-			);
+	startRealtimeSTT(options: RealtimeSttOptions = {}): RealtimeSttStream {
+		if (this.isSttBusy()) {
+			throw new Error('STT recording is already in progress');
 		}
 
-		this.pipelineSuppressed = false;
-		this.setChatState(ChatState.RECORDING);
+		const control = { stop: () => {} };
+		const events = new RealtimeSttEventQueue(() => control.stop());
+		void this.runRealtimeSTT(events, control, options);
+		return events;
+	}
 
-		// The worklet starts producing the moment the mic opens, but the stream is
-		// only usable after the ws handshake and the stt.start round-trip. Audio
-		// captured in that window is the onset of the user's first word, so it is
-		// held rather than dropped — the same rule the backpressure path follows.
+	/** Drives one startRealtimeSTT() cycle from mode check to `finished`. */
+	private async runRealtimeSTT(
+		events: RealtimeSttEventQueue,
+		control: { stop: () => void },
+		options: RealtimeSttOptions
+	): Promise<void> {
+		const controller = new AbortController();
+		const abort = (error: STTError) => controller.abort(error);
+		const aborted = rejectOnAbort(controller.signal);
+		// Only observed through the race below; an abort outside it is not unhandled.
+		aborted.catch(() => undefined);
+		// Claimed synchronously, before the first await, so a second start throws.
+		this.realtimeSttAbort = abort;
+
+		let opened: MicSttStream | null = null;
+		let stopWanted = false;
+		let stopSent = false;
+		let resolveStop: (result: Promise<SttStreamResult>) => void = () => {};
+		const stopResult = new Promise<SttStreamResult>((resolve) => (resolveStop = resolve));
+		// Runs synchronously inside stop(), so "stop" means now, not a tick later.
+		const stopNow = () => {
+			if (!opened || stopSent) return;
+			stopSent = true;
+			// The mic goes first: stop() detaches the worklet and ends the tracks
+			// synchronously, so no chunk follows realtime_stt.stop.
+			void opened.recorder.stop();
+			resolveStop(opened.stream.stop());
+		};
+		control.stop = () => {
+			stopWanted = true;
+			stopNow();
+		};
+
+		try {
+			const info = await this.resolveSessionInfo();
+			// An unknown row is not proof of a non-streaming type; let the server decide.
+			if (info && info.stt_type?.mode !== 'STREAMING') {
+				throw sttStreamError({
+					reason: 'startRealtimeSTT requires a session whose STT type is STREAMING',
+					code: STT_ERROR_CODE.MODE_UNSUPPORTED
+				});
+			}
+			const endOfTurnDetection = info?.stt_type?.end_of_turn_detection === true;
+
+			// Checked after the lookup: stopSession() has dropped the socket, and
+			// opening one now would reconnect a stopped session.
+			if (controller.signal.aborted) throw controller.signal.reason;
+			if (stopWanted) {
+				events.push({ type: 'finished', utteranceCount: 0 });
+				events.end();
+				return;
+			}
+
+			this.setChatState(ChatState.RECORDING);
+			opened = await this.openMicSttStream(
+				{
+					...(options.language && { language: options.language }),
+					onPartial: (partial) => events.push({ type: 'partial', ...partial }),
+					onUtterance: (utterance) => {
+						// The mic stays open while the avatar speaks only under EOT; see isEchoOfAvatar.
+						if (endOfTurnDetection && this.isEchoOfAvatar(utterance.text)) return;
+						events.push({ type: 'utterance', ...utterance });
+					},
+					onError: (error) => abort(error)
+				},
+				// stopSession() must not leave setup waiting out the start-ack timeout.
+				controller.signal
+			);
+			opened.flushPending();
+			events.push({ type: 'started' });
+			// stop() called while the stream was still opening.
+			if (stopWanted) stopNow();
+
+			const result = await Promise.race([stopResult, aborted]);
+			events.push({ type: 'finished', utteranceCount: result.utteranceCount });
+			events.end();
+		} catch (error) {
+			opened?.stream.cancel();
+			events.fail(error);
+		} finally {
+			this.realtimeSttAbort = null;
+			// Idempotent: a no-op when the stop path above already released it.
+			await opened?.recorder.stop();
+			this.setChatState(null, ChatState.RECORDING);
+		}
+	}
+
+	/** Whether any STT capture (a recording or a realtime cycle) is open or starting. */
+	private isSttBusy(): boolean {
+		return (
+			(this.sttRecorder?.isRecording() ?? false) ||
+			this.sttStarting ||
+			this.realtimeSttAbort !== null
+		);
+	}
+
+	/**
+	 * Opens the microphone and a `realtime_stt.*` stream fed by it.
+	 *
+	 * The worklet starts producing the moment the mic opens, but the stream is
+	 * only usable after the ws handshake and the realtime_stt.start round-trip.
+	 * Audio captured in that window is the onset of the user's first word, so it
+	 * is held rather than dropped, and sent when the caller calls `flushPending()`.
+	 * The caller must store the stream and recorder first: a failed send reports
+	 * through `onError`, whose teardown has to find the recorder to release the
+	 * mic. On failure the mic is released before the error is rethrown.
+	 *
+	 * Aborting `signal` ends a setup still waiting on the socket or the start
+	 * ack. The mic open itself is not raced: a getUserMedia that resolved after
+	 * the race was lost would leave a mic nobody stops. The abort is checked
+	 * right after it instead, before a socket can be created.
+	 */
+	private async openMicSttStream(
+		callbacks: Pick<SttStreamOptions, 'language' | 'onPartial' | 'onUtterance' | 'onError'>,
+		signal?: AbortSignal
+	): Promise<MicSttStream> {
 		const pending: Float32Array[] = [];
 		let liveStream: SttStream | null = null;
 		const recorder = new PcmStreamRecorder({
@@ -1262,111 +1388,41 @@ export class Session {
 			}
 		});
 
+		const until = <T>(step: Promise<T>): Promise<T> =>
+			signal ? Promise.race([step, rejectOnAbort(signal)]) : step;
+		let stream: SttStream | null = null;
+
 		try {
 			await recorder.start();
-			await this.getSocket().ensureOpen();
+			// Before getSocket(): after stopSession() it would create, and connect, a new socket.
+			if (signal?.aborted) throw signal.reason;
+			await until(this.getSocket().ensureOpen());
 
-			const stream = new SttStream({
+			stream = new SttStream({
 				socket: this.getSocket(),
 				sampleRate: recorder.sampleRate,
-				endOfTurnDetection: mode.endOfTurnDetection,
-				...(options.language && { language: options.language }),
-				onPartial: (partial) => this.dispatchSttPartial(partial),
-				onUtterance: (utterance) => this.handleSttUtterance(utterance),
-				onError: (error) => {
-					void this.teardownStreamingSTT();
-					this.setError(error);
-				}
+				...callbacks
 			});
+			const opening = stream;
+			await until(opening.open());
 
-			await stream.open();
-			this.sttStream = stream;
-			this.sttStreamRecorder = recorder;
-			this.sttTimeoutTranscript = null;
-
-			liveStream = stream;
-			for (const chunk of pending) {
-				stream.sendAudio(chunk);
-			}
-			pending.length = 0;
-
-			if (options.timeout && options.timeout > 0) {
-				// Mirrors the non-streaming path, which parks the recorded audio so a
-				// later stopProcessSTT() still returns a transcript. Discarding it
-				// here would make the same `timeout` option behave differently
-				// depending on a mode the caller did not choose.
-				this.sttTimeoutHandle = setTimeout(() => {
-					this.sttTimeoutHandle = null;
-					void this.stopStreamingSTT()
-						.then((text) => {
-							this.sttTimeoutTranscript = text;
-						})
-						.catch((error: unknown) => {
-							this.setError(error instanceof Error ? error : new Error(String(error)));
-						});
-				}, options.timeout);
-			}
+			const flushPending = () => {
+				liveStream = opening;
+				for (const chunk of pending) {
+					opening.sendAudio(chunk);
+				}
+				pending.length = 0;
+			};
+			return { stream: opening, recorder, flushPending };
 		} catch (error) {
+			stream?.cancel();
 			await recorder.stop();
-			this.setChatState(null, ChatState.RECORDING);
-			this.sttStream = null;
-			this.sttStreamRecorder = null;
 			// A socket that will not open is an STT failure; a mic-permission error
 			// (recorder.start) is not, so only the transport failure is wrapped so
 			// that `instanceof STTError` keeps working for connection loss.
 			throw error instanceof SessionSocketError
 				? sttStreamError({ reason: error.message, code: error.code })
 				: error;
-		}
-	}
-
-	/**
-	 * Routes a server-committed utterance to the result callback.
-	 *
-	 * Deliberately does NOT fall back to `processChat`: that path keeps its own
-	 * message history, separate from the one `processLLM` uses, so feeding new
-	 * streaming results into it would revive that divergence. Callers drive the
-	 * LLM themselves.
-	 */
-	private handleSttUtterance(utterance: SttUtterance): void {
-		if (this.isEchoOfAvatar(utterance.text)) {
-			return;
-		}
-
-		// Isolate each subscriber: a throwing callback must not block the other
-		// subscribers or the legacy 'stt' dispatch below (the dual-path contract).
-		for (const callback of [...this.sttUtteranceSubscribers]) {
-			try {
-				callback(utterance);
-			} catch (error) {
-				console.error('subscribeSttUtterances callback threw:', error);
-			}
-		}
-
-		// Back-compat: the deprecated setSttResultCallback still receives the split
-		// (text, meta) shape through the legacy 'stt' event.
-		this.sttEventHandler?.dispatchEvent(
-			new CustomEvent('stt', {
-				detail: {
-					text: utterance.text,
-					meta: {
-						seq: utterance.seq,
-						normalizedText: utterance.normalizedText,
-						locale: utterance.locale
-					}
-				}
-			})
-		);
-	}
-
-	private dispatchSttPartial(partial: SttPartial): void {
-		// Isolate each subscriber so one throwing callback does not starve the rest.
-		for (const callback of [...this.sttPartialSubscribers]) {
-			try {
-				callback(partial);
-			} catch (error) {
-				console.error('subscribeSttPartials callback threw:', error);
-			}
 		}
 	}
 
@@ -1403,21 +1459,6 @@ export class Session {
 		if (this.spokenHistory.length > ECHO_HISTORY_SIZE) {
 			this.spokenHistory.shift();
 		}
-	}
-
-	/** Stops mic capture and clears streaming state. */
-	private async teardownStreamingSTT(): Promise<void> {
-		if (this.sttTimeoutHandle) {
-			clearTimeout(this.sttTimeoutHandle);
-			this.sttTimeoutHandle = null;
-		}
-
-		const recorder = this.sttStreamRecorder;
-		this.sttStreamRecorder = null;
-		this.sttStream = null;
-		this.setChatState(null, ChatState.RECORDING);
-
-		await recorder?.stop();
 	}
 
 	/**
@@ -1463,33 +1504,15 @@ export class Session {
 	/**
 	 * Stops STT recording and resolves with the transcript.
 	 *
-	 * On a streaming session this sends `stt.stop` and waits for the terminal
-	 * frame; on a non-streaming one it sends the recorded WAV as a single
-	 * `stt.request` over the session WebSocket. In end-of-turn detection mode
-	 * the individual utterances were already delivered to the result callback
-	 * as they were committed, and the return value is their concatenation — a
-	 * summary of the stream, not the primary channel.
+	 * Sends the recorded WAV as a single `stt.request` over the session WebSocket.
 	 *
-	 * @param language Language code (e.g. 'ko'). Ignored on a streaming
-	 *   session, where the language is declared at `stt.start`; pass it to
-	 *   {@link startProcessSTT} instead.
+	 * @param language Language code (e.g. 'ko'). Defaults to the `language` given
+	 *   to {@link startProcessSTT}.
 	 * @returns Promise resolving to the transcribed text.
 	 * @throws STTError if the request fails.
 	 * @throws Error if not currently recording.
 	 */
-	async stopProcessSTT(language?: string): Promise<string> {
-		if (this.sttStream) {
-			return await this.stopStreamingSTT(language);
-		}
-
-		// Auto-stopped by timeout: the stream is already gone but its transcript
-		// was kept for exactly this call.
-		if (this.sttTimeoutTranscript !== null) {
-			const text = this.sttTimeoutTranscript;
-			this.sttTimeoutTranscript = null;
-			return text;
-		}
-
+	async stopProcessSTT(language: string | undefined = this.sttLanguage): Promise<string> {
 		if (this.sttTimeoutHandle) {
 			clearTimeout(this.sttTimeoutHandle);
 			this.sttTimeoutHandle = null;
@@ -1521,31 +1544,6 @@ export class Session {
 		return await this.transcribeOverSocket(audioFile, language);
 	}
 
-	/** Sends `stt.stop`, waits for the terminal frame, and releases the mic. */
-	private async stopStreamingSTT(language?: string): Promise<string> {
-		const stream = this.sttStream;
-		if (!stream) {
-			throw new Error('STT recording has not been started');
-		}
-
-		if (language && !this.warnedIgnoredLanguage) {
-			// Once per session: push-to-talk calls stop() on every utterance, and a
-			// warning repeated per turn trains the reader to ignore the console.
-			this.warnedIgnoredLanguage = true;
-			console.warn(
-				'stopProcessSTT: `language` is ignored on a streaming session — it is ' +
-					'declared at stt.start. Pass it to startProcessSTT({ language }) instead.'
-			);
-		}
-
-		try {
-			const result = await stream.stop();
-			return result.text;
-		} finally {
-			await this.teardownStreamingSTT();
-		}
-	}
-
 	/**
 	 * Checks if STT recording is currently in progress or has audio pending processing.
 	 * @returns True if recording is active or audio is pending from timeout.
@@ -1553,7 +1551,7 @@ export class Session {
 	isSTTRecording(): boolean {
 		return (
 			(this.sttRecorder?.isRecording() ?? false) ||
-			(this.sttStream?.active ?? false) ||
+			this.realtimeSttAbort !== null ||
 			this.sttTimeoutAudioFile !== null
 		);
 	}
@@ -1591,16 +1589,6 @@ export class Session {
 			request.cancel();
 		}
 
-		// Barge-in: abort the in-flight recognition along with playback so the
-		// next turn starts clean. cancel is idempotent, so a finished stream is
-		// a no-op. Teardown must follow: cancel only marks the stream finished,
-		// and a recorder left running keeps the microphone open AND feeds the
-		// *next* stream, since its callback resolves the stream at call time.
-		if (this.sttStream) {
-			this.sttStream.cancel();
-			await this.teardownStreamingSTT();
-		}
-
 		// Barge-in also applies to an open streaming STF turn: cancel drops the
 		// queued audio and tells the server to discard what it has buffered. A
 		// live turn still waiting for its first chunk has no stream yet, so its
@@ -1619,6 +1607,8 @@ export class Session {
 
 		this.pipelineSuppressed = true;
 		this.resetChatState();
+		// A realtime cycle survives barge-in, so it is still recording.
+		if (this.realtimeSttAbort) this.setChatState(ChatState.RECORDING);
 	}
 
 	/**
@@ -1707,72 +1697,19 @@ export class Session {
 	}
 
 	/**
-	 * Subscribes to interim STT hypotheses on a streaming session, delivered as
-	 * the user speaks. Multiple subscribers are supported; the returned function
-	 * removes this one. Never fires on a non-streaming session.
-	 *
-	 * A hypothesis is provisional — render `text` as in-progress and treat
-	 * `finalText` as the confirmed prefix. Under end-of-turn detection each
-	 * partial carries `utteranceSeq`, tying it to the utterance delivered by
-	 * {@link subscribeSttUtterances}.
-	 *
-	 * @param callback Handler receiving each {@link SttPartial}.
-	 * @returns Function to unsubscribe.
-	 */
-	subscribeSttPartials(callback: (partial: SttPartial) => void): () => void {
-		this.sttPartialSubscribers.add(callback);
-		return () => {
-			this.sttPartialSubscribers.delete(callback);
-		};
-	}
-
-	/**
-	 * Subscribes to committed STT utterances under end-of-turn detection, each
-	 * delivered once as a whole {@link SttUtterance}. Multiple subscribers are
-	 * supported; the returned function removes this one.
-	 *
-	 * At least one subscriber (or a {@link setSttResultCallback} handler) is
-	 * required before {@link startProcessSTT} on an end-of-turn session, since the
-	 * server commits utterances asynchronously and they have no return value to
-	 * travel on. Registering after start would race the first utterance.
-	 *
-	 * @param callback Handler receiving each committed {@link SttUtterance}.
-	 * @returns Function to unsubscribe.
-	 */
-	subscribeSttUtterances(callback: (utterance: SttUtterance) => void): () => void {
-		this.sttUtteranceSubscribers.add(callback);
-		return () => {
-			this.sttUtteranceSubscribers.delete(callback);
-		};
-	}
-
-	/**
 	 * Streams raw STT text results to the provided callback instead of routing
 	 * them back into the LLM pipeline automatically.
 	 *
-	 * @deprecated Prefer {@link subscribeSttUtterances}, which delivers each
-	 *   committed utterance as a whole {@link SttUtterance} and supports multiple
-	 *   subscribers. This method is retained for the classic DataChannel
-	 *   voice-chat path and for backward compatibility.
+	 * @deprecated Serves only the legacy DataChannel voice-chat path
+	 *   ({@link startVoiceChat}). Take the transcript from {@link stopProcessSTT}'s
+	 *   return value, or iterate {@link startRealtimeSTT} on a streaming session.
 	 *
-	 * Required before {@link startProcessSTT} on a session whose STT type uses
-	 * end-of-turn detection: there, utterances are committed by the server as
-	 * the conversation goes and have no return value to travel on.
-	 *
-	 * @param callback Handler for STT transcripts. The second argument carries
-	 *   per-utterance metadata on streaming sessions and is absent on the
-	 *   classic path — existing single-argument handlers keep working.
+	 * @param callback Handler for STT transcripts.
 	 * @returns Function to unsubscribe/reset STT event handling.
 	 */
-	setSttResultCallback(callback: (text: string, meta?: SttResultMeta) => void) {
-		const wrapper = (e: CustomEvent) => {
-			// The legacy DataChannel path dispatches a bare string; the streaming
-			// path dispatches { text, meta }.
-			if (typeof e.detail === 'string') {
-				callback(e.detail);
-				return;
-			}
-			callback(e.detail.text, e.detail.meta);
+	setSttResultCallback(callback: (text: string) => void) {
+		const wrapper = (e: CustomEvent<string>) => {
+			callback(e.detail);
 		};
 		this.sttEventHandler = new EventTarget();
 		this.sttEventHandler.addEventListener('stt', wrapper as EventListener);
@@ -2240,8 +2177,11 @@ export class Session {
 	 */
 	private close() {
 		this.stopHeartbeat();
-		this.sttStream?.cancel();
-		void this.teardownStreamingSTT();
+		// SessionSocket.close() does not notify listeners, so the cycle would
+		// otherwise wait forever with the mic open.
+		this.realtimeSttAbort?.(
+			sttStreamError({ reason: 'Session stopped', code: SESSION_SOCKET_CODE.DISPOSED })
+		);
 		this.socket?.close();
 		this.socket = null;
 		// Cancel before the channel goes away, so the server is not left holding

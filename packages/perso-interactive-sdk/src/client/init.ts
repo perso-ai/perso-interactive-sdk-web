@@ -37,7 +37,6 @@ export async function createSessionId(
  * @param paramsOrTemplateId Runtime options for the session, or a
  *   SessionTemplate ID to resolve configuration from (positional form only).
  * @returns Session ID returned by the server.
- * @throws {Error} If a SessionTemplate's `model_style.platform_type` is not `"webrtc"`.
  * @throws {SessionCreationError} When the API returns an error during session creation.
  * @throws {DoesNotExistError} When the server response `code` is `'does_not_exist'` (subclass of `SessionCreationError`).
  * @throws {NotInOrganizationError} When the server response `code` is `'not_in_organization'` (subclass of `SessionCreationError`).
@@ -89,12 +88,6 @@ async function createSessionIdInternal(
 
 		if (typeof paramsOrTemplateId === 'string') {
 			const template = await PersoUtil.getSessionTemplate(apiServer, apiKey, paramsOrTemplateId);
-
-			if (template.model_style && template.model_style.platform_type !== 'webrtc') {
-				throw new Error(
-					`SessionTemplate "${paramsOrTemplateId}" uses platform_type "${template.model_style.platform_type}", but only "webrtc" is supported`
-				);
-			}
 
 			params = sessionTemplateToParams(template);
 		} else {
