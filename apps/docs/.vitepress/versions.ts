@@ -23,7 +23,7 @@ const repoRoot = resolve(docsRoot, '..', '..');
 
 export const versions: DocsVersion[] = [
 	{
-		label: 'v1.8.0 (latest)',
+		label: 'v1.8.1 (latest)',
 		base: '',
 		apiDocsPath: resolve(repoRoot, 'core/api-docs.md'),
 		isLatest: true,

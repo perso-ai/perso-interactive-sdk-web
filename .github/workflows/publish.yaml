@@ -1,0 +1,57 @@
+name: Publish perso-interactive-sdk-web to npm
+
+# Runs in the public mirror (perso-ai/perso-interactive-sdk-web) only. build-and-push.yaml
+# copies this file there and pushes the release tag with a PAT, which triggers it.
+# Authenticates with npm trusted publishing (OIDC), so no npm token is stored anywhere.
+# npm requires the publishing repo to match package.json `repository.url`, i.e. the mirror.
+
+on:
+  push:
+    tags:
+      - '[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    if: github.repository == 'perso-ai/perso-interactive-sdk-web'
+    runs-on: ubuntu-latest
+    # The OIDC token is the publish credential, so this job runs only first-party actions.
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Trusted publishing needs Node >= 22.14.0 and npm CLI >= 11.5.1.
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install npm (trusted publishing) and pnpm
+        run: |
+          npm install -g npm@11.21.2 pnpm@10.11.0
+          npm --version
+          pnpm --version
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check tag matches package version
+        working-directory: packages/perso-interactive-sdk
+        run: |
+          TAG_NAME="${GITHUB_REF#refs/tags/}"
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if [ "$TAG_NAME" != "$PKG_VERSION" ]; then
+            echo "Tag $TAG_NAME does not match package.json version $PKG_VERSION"
+            exit 1
+          fi
+
+      # prepublishOnly builds dist/ before packing.
+      - name: Publish to npm
+        working-directory: packages/perso-interactive-sdk
+        run: npm publish --access public

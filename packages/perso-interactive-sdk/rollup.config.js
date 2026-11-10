@@ -3,7 +3,7 @@ import resolve from "@rollup/plugin-node-resolve";
 import terser from "@rollup/plugin-terser";
 import typescript from "@rollup/plugin-typescript";
 import { spawn } from "child_process";
-import { mkdirSync } from "fs";
+import { mkdirSync, readFileSync } from "fs";
 import { dirname, join } from "path";
 import dts from "rollup-plugin-dts";
 import livereload from "rollup-plugin-livereload";
@@ -57,6 +57,20 @@ function createDistDir() {
   };
 }
 
+// Rollup cannot parse JSON on its own; expose only the version so the client
+// bundle does not ship the rest of package.json.
+function packageVersion() {
+  const pkgPath = join(__dirname, "package.json");
+  return {
+    name: "package-version",
+    load(id) {
+      if (id !== pkgPath) return null;
+      const { version } = JSON.parse(readFileSync(pkgPath, "utf8"));
+      return `export default { version: ${JSON.stringify(version)} };`;
+    },
+  };
+}
+
 // ============================================================================
 // Build Configurations
 // ============================================================================
@@ -76,6 +90,7 @@ const clientEsmConfig = {
       browser: true,
     }),
     commonjs(),
+    packageVersion(),
     typescript({
       sourceMap: !production,
       inlineSources: !production,
@@ -98,6 +113,7 @@ const clientCjsConfig = {
       browser: true,
     }),
     commonjs(),
+    packageVersion(),
     typescript({
       sourceMap: !production,
       inlineSources: !production,
@@ -120,6 +136,7 @@ const clientIifeConfig = {
       browser: true,
     }),
     commonjs(),
+    packageVersion(),
     typescript({
       sourceMap: !production,
       inlineSources: !production,
