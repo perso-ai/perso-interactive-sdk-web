@@ -77,12 +77,18 @@ export class PersoUtil {
 	 * ]
 	 */
 	static async getModelStyles(apiServer: string, apiKey: string): Promise<ModelStyle[]> {
-		const promise = fetch(`${apiServer}/api/v1/settings/modelstyle/?platform_type=webrtc`, {
-			headers: {
-				'PersoLive-APIKey': apiKey
-			},
-			method: 'GET'
-		});
+		// multi_platform styles run on WebRTC too, but `platform_type=webrtc` excludes them.
+		// `use_url=false` skips per-file SAS URL signing, which dominates the response time;
+		// `files[].file` then holds the storage path instead of a signed URL.
+		const promise = fetch(
+			`${apiServer}/api/v1/settings/modelstyle/?platform_type__in=webrtc,multi_platform&use_url=false`,
+			{
+				headers: {
+					'PersoLive-APIKey': apiKey
+				},
+				method: 'GET'
+			}
+		);
 		const response = await promise;
 
 		return await this.parseJson(response);

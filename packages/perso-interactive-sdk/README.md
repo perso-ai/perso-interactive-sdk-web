@@ -239,6 +239,8 @@ session.subscribeChatLog((chatLog) => {
 });
 ```
 
+> `createSession` automatically sends one `SESSION_LOG` event per session with the SDK version and the browser environment (User-Agent, touch points, and User-Agent Client Hints on Chromium, including OS version and device model). See [Client environment log](https://github.com/perso-ai/perso-interactive-sdk-web/blob/master/core/api-docs.md#client-environment-log) for the full field list.
+
 #### Chat (Recommended) — processLLM → processTTS → processSTF
 
 Full pipeline with individual step control. Use this when you need to handle each stage (LLM response, TTS audio, avatar animation) separately.

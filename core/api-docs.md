@@ -354,6 +354,21 @@ const session = await createSession({
 
 If `videoCodec` is set but the browser cannot decode it (or exposes no video receive capabilities, e.g. older Safari), `createSession` throws an `Error` whose `name` is `VideoCodecUnsupportedError`. The server must also support encoding the requested codec.
 
+#### Client environment log
+
+Once the connection is established, `createSession` automatically sends one `SESSION_LOG` event for the session so server logs can tie issues to an SDK release, browser, OS and device. No call is needed, and a failed request never fails session creation. The event `detail` is a JSON string with these fields:
+
+| Field | Sent by | Description |
+|-------|---------|-------------|
+| `type` | All browsers | Always `"client_info"` |
+| `sdk_version` | All browsers | SDK package version |
+| `user_agent` | All browsers | `navigator.userAgent` |
+| `max_touch_points` | All browsers | `navigator.maxTouchPoints` (separates iPadOS Safari, whose UA matches desktop Safari, from a Mac) |
+| `platform`, `mobile`, `brands` | Chromium-based browsers | Low-entropy User-Agent Client Hints |
+| `platform_version`, `architecture`, `model`, `full_version_list` | Chromium-based browsers | High-entropy User-Agent Client Hints (real OS version, CPU architecture, device model, full browser version) |
+
+Safari, Firefox and every iOS browser do not expose Client Hints, so only the first four fields are sent there. If your product discloses data collection to end users, include these fields.
+
 ### Get LLM list
 
 ```typescript

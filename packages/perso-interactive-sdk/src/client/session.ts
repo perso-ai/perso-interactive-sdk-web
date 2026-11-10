@@ -35,6 +35,7 @@ import type {
 	TTSOutputFormat,
 	TTSType
 } from '../shared/types';
+import { getClientInfo } from './client-info';
 import { LlmProcessor } from './llm';
 import {
 	type Chat,
@@ -2262,6 +2263,7 @@ export async function createSession(
 		// Modern object/positional form: arg5 is clientTools, arg6 is videoCodec.
 		const videoCodec = clientToolsOrVideoCodec as VideoCodec | undefined;
 		const perso = await Perso.create(apiServer, sessionId, width, height, undefined, videoCodec);
+		reportClientInfo(apiServer, sessionId);
 		return new Session(apiServer, sessionId, perso, enableVoiceChatOrClientTools);
 	}
 
@@ -2295,6 +2297,7 @@ export async function createSession(
 	}
 
 	const perso = await Perso.create(apiServer, sessionId, width, height, stream);
+	reportClientInfo(apiServer, sessionId);
 
 	if (!perso) {
 		releaseAudioSourceFunc();
@@ -2311,6 +2314,17 @@ export async function createSession(
 	});
 
 	return session;
+}
+
+/**
+ * Fire-and-forget: a failed diagnostics log must never fail session creation.
+ */
+function reportClientInfo(apiServer: string, sessionId: string): void {
+	getClientInfo()
+		.then((info) =>
+			PersoUtil.sessionEvent(apiServer, sessionId, SessionEvent.SESSION_LOG, JSON.stringify(info))
+		)
+		.catch(() => {});
 }
 
 /**

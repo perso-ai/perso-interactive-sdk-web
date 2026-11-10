@@ -97,7 +97,13 @@ export type CreateSessionObjectOptions = {
 	videoCodec?: VideoCodec;
 };
 
-/** @overload Object-form. Uses DEFAULT_API_SERVER when apiServer is omitted. */
+/**
+ * @overload Object-form. Uses DEFAULT_API_SERVER when apiServer is omitted.
+ *
+ * Once connected, every overload sends one `SESSION_LOG` event (`client_info`)
+ * with the SDK version, User-Agent, touch points and, on Chromium, User-Agent
+ * Client Hints (OS version, architecture, device model, full browser version).
+ */
 export function createSession(options: CreateSessionObjectOptions): Promise<Session>;
 /**
  * Creates a Session with SDK-driven STT/TTS (current mode): speech is
